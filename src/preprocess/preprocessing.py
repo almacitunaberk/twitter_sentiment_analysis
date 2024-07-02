@@ -159,7 +159,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.input_path is None or args.output_dir is None or args.output_filename is None:
-        raise ValueError("Input path, output directory and output filename are required arguments")
+        raise ValueError("Input path, output directory and output filename are required arguments!")
 
     preprocessor = Preprocessor(input_path=args.input_path, output_dir=args.output_dir,
                                 output_filename=args.output_filename,

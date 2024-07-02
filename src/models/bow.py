@@ -21,6 +21,7 @@ def load_tweets(filename, label):
             tweets.append(line.rstrip())
             labels.append(label)
 
+
 pos_file = f"{data_file_path}/train_pos_full.txt"
 neg_file = f"{data_file_path}/train_neg_full.txt"
 load_tweets(neg_file, 0)
