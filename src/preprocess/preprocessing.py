@@ -136,6 +136,16 @@ class Preprocessor():
                 "idk": "i do not know",
                 "dont": "do not",
                 "didnt": "did not",
+                "ur": "your",
+                "youre": "you are ",
+                "won't": "will not",
+                "gd": "good",
+                "tht": "that",
+                "&": "and",
+                "@": "at",
+                "pls": "please",
+                "plz": "please",
+                "..": "...",
             }
             return " ".join([slangs[word] if word in slangs else word for word in tweet.split()])
 

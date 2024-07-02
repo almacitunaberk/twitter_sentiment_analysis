@@ -10,8 +10,22 @@ class Tokenizer():
 
     def tokenize_tweet(self, tweet:str):
         tokens = self.tokenizer.tokenize(tweet)
-        tokens = [token in tokens if not self.post_process else self.process(token) for token in tokens]
-        return tokens
+        post_tweet = " ".join([token in tokens if not self.post_process else self.process(token) for token in tokens])
+        if self.post_process:
+            post_tweet = (
+                post_tweet.replace("cannot ", "can not ")
+                .replace("n't ", " n't ")
+                .replace("n 't ", "n't ")
+                .replace("ca n't", "can't")
+                .replace("ai n't", "ain't")
+                .replace("'m ", " am ")
+                .replace("'re ", " are ")
+                .replace("'s ", " 's ")
+                .replace("'ll ", " will ")
+                .replace("'d ", " 'd ")
+                .replace("'ve ", " have ")
+                )
+        return post_tweet.split()
 
     def process(self, token:str):
         if len(token) == 1:
@@ -33,5 +47,5 @@ if __name__ == "__main__":
 
     tokenizer = Tokenizer(reduce_len=args.reduce_len, post_process=args.post_process)
 
-    tweet = "i loveeeeeee this platformmm !!!! thanks a lot elonn!!"
+    tweet = "i'll eatttt  you like  😊 a piece of cake and you'll obey me!!!! i've done that already"
     print(tokenizer.tokenize_tweet(tweet))
