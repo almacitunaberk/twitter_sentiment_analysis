@@ -66,28 +66,7 @@ class Preprocessor():
     def _process_tweets(self, tweets, labels):
         processed_tweets = []
         for tweet in tweets:
-            if self.lowercase:
-                tweet = self.lowercase_tweet(tweet=tweet)
-            if self.no_url:
-                tweet = self.remove_url(tweet=tweet)
-            if self.no_user:
-                tweet = self.remove_user(tweet=tweet)
-            if self.no_hashtag:
-                tweet = self.remove_hashtag(tweet=tweet)
-            if self.no_numbers:
-                tweet = self.remove_numbers(tweet=tweet)
-            if self.no_extra_space:
-                tweet = self.remove_extra_space(tweet=tweet)
-            if self.no_stopwords:
-                tweet = self.remove_stopwords(tweet=tweet)
-            if self.soft_lemmatize:
-                tweet = self.soft_lemmatize(tweet=tweet)
-            if self.hard_lemmatize:
-                tweet = self.hard_lemmatize(tweet=tweet)
-            if self.stemming:
-                tweet = self.stem_words(tweet=tweet)
-            if self.slang_conversion:
-                tweet = self.slang_process(tweet=tweet)
+            tweet = self.process_single_tweet(tweet=tweet)
             processed_tweets.append(tweet)
         if not os.path.exists(f"{self.output_dir}"):
             os.makedirs(self.output_dir)
@@ -99,42 +78,45 @@ class Preprocessor():
         tqdm_text = "#" + "{}".format(index).zfill(3)
         with tqdm(total=total, desc=tqdm_text, position=index+1) as pbar:
             for tweet in tweets:
-                if self.lowercase:
-                    tweet = self.lowercase_tweet(tweet=tweet)
-                if self.no_url:
-                    tweet = self.remove_url(tweet=tweet)
-                if self.no_user:
-                    tweet = self.remove_user(tweet=tweet)
-                if self.no_hashtag:
-                    tweet = self.remove_hashtag(tweet=tweet)
-                if self.no_numbers:
-                    tweet = self.remove_numbers(tweet=tweet)
-                if self.no_extra_space:
-                    tweet = self.remove_extra_space(tweet=tweet)
-                if self.no_stopwords:
-                    tweet = self.remove_stopwords(tweet=tweet)
-                if self.soft_lem:
-                    tweet = self.soft_lemmatize(tweet=tweet)
-                if self.hard_lem:
-                    tweet = self.hard_lemmatize(tweet=tweet)
-                if self.stemming:
-                    tweet = self.stem_words(tweet=tweet)
-                if self.slang_conversion:
-                    tweet = self.slang_process(tweet=tweet)
+                tweet = self.process_single_tweet(tweet=tweet)
                 processed_list.append(tweet)
                 pbar.update(1)
         return 1
+
+    def process_single_tweet(self, tweet:str):
+        processed_tweet = tweet
+        if self.lowercase:
+            processed_tweet = self.lowercase_tweet(tweet=processed_tweet)
+        if self.no_url:
+            processed_tweet = self.remove_url(tweet=processed_tweet)
+        if self.no_user:
+            processed_tweet = self.remove_user(tweet=processed_tweet)
+        if self.no_hashtag:
+            processed_tweet = self.remove_hashtag(tweet=processed_tweet)
+        if self.no_numbers:
+            processed_tweet = self.remove_numbers(tweet=processed_tweet)
+        if self.no_extra_space:
+            processed_tweet = self.remove_extra_space(tweet=processed_tweet)
+        if self.no_stopwords:
+            processed_tweet = self.remove_stopwords(tweet=processed_tweet)
+        if self.soft_lem:
+            processed_tweet = self.soft_lemmatize(tweet=processed_tweet)
+        if self.hard_lem:
+            processed_tweet = self.hard_lemmatize(tweet=processed_tweet)
+        if self.stemming:
+            processed_tweet = self.stem_words(tweet=processed_tweet)
+        if self.slang_conversion:
+            processed_tweet = self.slang_process(tweet=processed_tweet)
+        return processed_tweet
 
     def process(self):
         pos_tweets, neg_tweets = self.get_pos_and_neg_tweets()
         if self.parallelize:
             splitted_pos_tweets = self.split_dataset(np.array(pos_tweets))
             splitted_neg_tweets = self.split_dataset(np.array(neg_tweets))
-            """
             for i in range(len(splitted_pos_tweets)):
                 splitted_pos_tweets[i] = splitted_pos_tweets[i][:10]
                 splitted_neg_tweets[i] = splitted_neg_tweets[i][:10]
-            """
             with multiprocessing.Manager() as manager:
                 manager = multiprocessing.Manager()
                 pos_processed_list = manager.list()
