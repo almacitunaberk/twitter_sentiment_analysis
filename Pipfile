@@ -8,6 +8,7 @@ kaggle = "*"
 numpy = "*"
 spacy = "*"
 emoji = "*"
+pandas = "*"
 
 [dev-packages]
 
