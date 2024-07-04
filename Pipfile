@@ -9,6 +9,7 @@ numpy = "*"
 spacy = "*"
 emoji = "*"
 pandas = "*"
+wordsegment = "*"
 
 [dev-packages]
 
