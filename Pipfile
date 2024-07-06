@@ -9,6 +9,9 @@ numpy = "*"
 spacy = "*"
 emoji = "*"
 pandas = "*"
+wordsegment = "*"
+gensim = "*"
+scipy = "==1.10.1"
 
 [dev-packages]
 
