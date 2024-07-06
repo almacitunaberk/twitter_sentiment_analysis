@@ -11,6 +11,7 @@ from sklearn.metrics import accuracy_score
 import pandas as pd
 import os
 import numpy as np
+import multiprocessing
 
 def cross_validation(tweets, labels,
                      embedding_model:str, model_type:str,
@@ -46,16 +47,30 @@ def cross_validation(tweets, labels,
             vectorizer = CountVectorizer(max_features=embedding_args.get("max_features"))
             X_train = vectorizer.fit_transform(training_tweets)
             X_val = vectorizer.transform(val_tweets)
+            if model_type == "gaussian":
+                X_train = np.asarray(X_train.todense())
+                X_val = np.asarray(X_val.todense())
         elif embedding_model == "tf-idf":
             vectorizer = TfidfVectorizer(max_features=embedding_args.get("max_features"))
             X_train = vectorizer.fit_transform(training_tweets)
             X_val = vectorizer.transform(val_tweets)
+            if model_type == "gaussian":
+                X_train = np.asarray(X_train.todense())
+                X_val = np.asarray(X_val.todense())
         else:
             pass
 
-        print("Training {model_type} with embedding type: {embedding_model}")
+
+        scaler = StandardScaler(with_mean=False)
+        X_train = scaler.fit_transform(X_train)
+        X_val = scaler.transform(X_val)
+
+        print(f"Training {model_type} with embedding type: {embedding_model}")
         if model_type == "logistic":
-            model = LogisticRegression(n_jobs=model_args.get("n_jobs"), random_state=42, solver=model_args.get("solver"))
+            model = LogisticRegression(n_jobs=model_args.get("n_jobs"),
+                                       random_state=42,
+                                       solver=model_args.get("solver"),
+                                       C=model_args.get("C"), max_iter=model_args.get("max_iter"))
         elif model_type == "ridge":
             model = Ridge(alpha=model_args.get("alpha"), random_state=42, max_iter=model_args.get("max_iter"), solver=model_args.get("solver"))
         elif model_type == "random_forest":
@@ -65,12 +80,17 @@ def cross_validation(tweets, labels,
                                            max_depth=model_args.get("max_depth"),
                                            max_features=model_args.get("max_features"))
         elif model_type == "gaussian":
+            if embedding_model == "bow":
+                X_train
             model = GaussianNB()
         elif model_type == "multinomial":
             model = MultinomialNB(alpha=model_args.get("alpha"))
 
         model.fit(X_train, training_labels)
-        y_preds = model.predict(X_val)
+        if model_type == "ridge":
+            y_preds = (model.predict(X_val) > 0.5).astype(np.int64)
+        else:
+            y_preds = model.predict(X_val)
         accuracy = accuracy_score(val_labels, y_preds)
 
         if accuracy == None:
@@ -79,16 +99,18 @@ def cross_validation(tweets, labels,
         aggregated_acc.append(accuracy)
     mean_accuracy = np.array(aggregated_acc).mean()
     std_accuracy = np.array(aggregated_acc).std()
-    print("{model_type} done. Accuracy: {mean_accuracy} Std: {std_accuracy}")
+    print(f"{model_type} done. Accuracy: {mean_accuracy} Std: {std_accuracy}")
     print("Logging the results to the log file")
     log = f"{embedding_model}"
-    for key in embedding_args:
-        arg = embedding_args.get(key)
-        log = f"{log} {key}:{arg}"
-    log = f"{log} + {model_type}"
-    for key in model_args:
-        arg = model_args.get(key)
-        log = f"{log} {key}:{arg}"
+    if embedding_args is not None:
+        for key in embedding_args:
+            arg = embedding_args.get(key)
+            log = f"{log} {key}:{arg}"
+        log = f"{log} + {model_type}"
+    if model_args is not None:
+        for key in model_args:
+            arg = model_args.get(key)
+            log = f"{log} {key}:{arg}"
     log = f"{log} \n"
     log = f"{log}\naccuracy: {mean_accuracy} std: {std_accuracy}\n"
     with open(f"{log_path}/{log_filename}.txt", "a") as f:
@@ -123,10 +145,45 @@ if __name__ == "__main__":
     tweets = np.concatenate([pos_tweets, neg_tweets])
     labels = np.concatenate([pos_labels, neg_labels])
     """
-    cross_validation(tweets=tweets, labels=labels,
-                     embedding_model="bow", model_type="logistic",
-                     model_args={"n_jobs":8, "solver":"saga"},
-                     embedding_args={"max_features": 5000},
-                     log_path=args.log_path, log_filename=args.log_filename,
-                     data_type=preprocessed_data_type)
+    model_to_args = {
+        "logistic": {
+            "n_jobs": multiprocessing.cpu_count(),
+            "solver": "saga",
+            "C": 1e5,
+            "max_iter": 100,
+        },
+        "ridge": {
+            "alpha": 0.1,
+            "max_iter": 1000,
+            "solver": "auto",
+        },
+        "random_forest": {
+            "n_jobs": multiprocessing.cpu_count(),
+            "n_estimators": 200,
+            "max_depth": 50,
+            "max_features": 50,
+        },
+        "gaussian": None,
+        "multinomial": {
+            "alpha": 0.01,
+        }
+    }
+    embedding_to_args = {
+        "bow": {
+            "max_features": 5000,
+        },
+        "tf-idf": {
+            "max_features": 5000,
+        }
+    }
+    for embedding_model in ["bow", "tf-idf"]:
+        for model_type in ["logistic", "ridge", "random_forest", "gaussian", "multinomial"]:
+            cross_validation(tweets=tweets, labels=labels,
+                             embedding_model=embedding_model,
+                             model_type=model_type,
+                             embedding_args=embedding_to_args.get(embedding_model),
+                             model_args=model_to_args.get(model_type),
+                             log_path=args.log_path,
+                             log_filename=args.log_filename,
+                             data_type=preprocessed_data_type)
 
