@@ -11,7 +11,27 @@ from sklearn.metrics import accuracy_score
 import pandas as pd
 import os
 import numpy as np
+from torchtext.vocab import GloVe
 import multiprocessing
+
+def load_glove_embeddings():
+    embedding_dict = {}
+    with open("../glove.twitter.27B.100d.txt", encoding='utf-8') as f:
+        for line in f:
+            values = line.split()
+            word = values[0]
+            vector = np.asarray(values[1:], dtype='float32')
+            embedding_dict[word] = vector
+    return embedding_dict
+
+# Function to convert tweets to GloVe embeddings
+def tweet_to_glove_embedding(tweet, embedding_dict):
+    words = tweet.split()
+    embeddings = [embedding_dict[word] for word in words if word in embedding_dict]
+    if len(embeddings) == 0:
+        return np.zeros(len(embedding_dict[next(iter(embedding_dict))]))
+    return np.mean(embeddings, axis=0)
+
 
 def cross_validation(tweets, labels,
                      embedding_model:str, model_type:str,
@@ -57,13 +77,15 @@ def cross_validation(tweets, labels,
             if model_type == "gaussian":
                 X_train = np.asarray(X_train.todense())
                 X_val = np.asarray(X_val.todense())
-        else:
-            pass
+        elif embedding_model == "glove":
+            glove = GloVe(name="twitter.27B", dim=embedding_args.get("dimension"))
+            X_train = np.array([np.mean(glove.get_vecs_by_tokens(tweet.split(), lower_case_backup=True).numpy(), axis=0) for tweet in training_tweets], dtype="float64")
+            X_val = np.array([np.mean(glove.get_vecs_by_tokens(tweet.split(), lower_case_backup=True).numpy(), axis=0) for tweet in val_tweets], dtype="float64")
 
-
-        scaler = StandardScaler(with_mean=False)
-        X_train = scaler.fit_transform(X_train)
-        X_val = scaler.transform(X_val)
+        if embedding_model in ["bow", "tf-idf"]:
+            scaler = StandardScaler(with_mean=False)
+            X_train = scaler.fit_transform(X_train)
+            X_val = scaler.transform(X_val)
 
         print(f"Training {model_type} with embedding type: {embedding_model}")
         if model_type == "logistic":
@@ -75,15 +97,15 @@ def cross_validation(tweets, labels,
             model = Ridge(alpha=model_args.get("alpha"), random_state=42, max_iter=model_args.get("max_iter"), solver=model_args.get("solver"))
         elif model_type == "random_forest":
             model = RandomForestClassifier(n_jobs=model_args.get("n_jobs"),
-                                           random_state=42,
-                                           n_estimators=model_args.get("n_estimators"),
-                                           max_depth=model_args.get("max_depth"),
-                                           max_features=model_args.get("max_features"))
+                                        random_state=42,
+                                        n_estimators=model_args.get("n_estimators"),
+                                        max_depth=model_args.get("max_depth"),
+                                        max_features=model_args.get("max_features"))
         elif model_type == "gaussian":
             if embedding_model == "bow":
                 X_train
             model = GaussianNB()
-        elif model_type == "multinomial":
+        elif model_type == "bernoulli":
             model = BernoulliNB(alpha=model_args.get("alpha"))
 
         model.fit(X_train, training_labels)
@@ -97,6 +119,7 @@ def cross_validation(tweets, labels,
             print("Accuracy gives None. Something went wrong!")
             return
         aggregated_acc.append(accuracy)
+
     mean_accuracy = np.array(aggregated_acc).mean()
     std_accuracy = np.array(aggregated_acc).std()
     print(f"{model_type} done. Accuracy: {mean_accuracy} Std: {std_accuracy}")
@@ -157,9 +180,15 @@ if __name__ == "__main__":
             "max_iter": 1000,
             "solver": "auto",
         },
-        "random_forest": {
+        "random_forest_glove": {
+            "n_estimators": 100,
+            "max_depth": 10,
+            "max_features": 50,
             "n_jobs": multiprocessing.cpu_count(),
-            "n_estimators": 200,
+        },
+        "random_forest_others": {
+            "n_jobs": multiprocessing.cpu_count(),
+            "n_estimators": 100,
             "max_depth": 50,
             "max_features": 50,
         },
@@ -174,16 +203,48 @@ if __name__ == "__main__":
         },
         "tf-idf": {
             "max_features": 5000,
+        },
+        "glove": {
+            "dimension": 200,
         }
     }
-    for embedding_model in ["bow", "tf-idf"]:
+    """
+    cross_validation(tweets=tweets, labels=labels,
+                                embedding_model="glove",
+                                model_type="bernoulli",
+                                embedding_args=embedding_to_args.get("glove"),
+                                model_args=model_to_args.get("bernoulli"),
+                                log_path=args.log_path,
+                                log_filename=args.log_filename,
+                                data_type=preprocessed_data_type)
+    """
+    for embedding_model in ["bow", "tf-idf", "glove"]:
         for model_type in ["logistic", "ridge", "random_forest", "gaussian", "bernoulli"]:
-            cross_validation(tweets=tweets, labels=labels,
-                             embedding_model=embedding_model,
-                             model_type=model_type,
-                             embedding_args=embedding_to_args.get(embedding_model),
-                             model_args=model_to_args.get(model_type),
-                             log_path=args.log_path,
-                             log_filename=args.log_filename,
-                             data_type=preprocessed_data_type)
-
+            if model_type == "random_forest":
+                if embedding_model == "glove":
+                    cross_validation(tweets=tweets, labels=labels,
+                                embedding_model=embedding_model,
+                                model_type=model_type,
+                                embedding_args=embedding_to_args.get(embedding_model),
+                                model_args=model_to_args.get("random_forest_glove"),
+                                log_path=args.log_path,
+                                log_filename=args.log_filename,
+                                data_type=preprocessed_data_type)
+                else:
+                    cross_validation(tweets=tweets, labels=labels,
+                                embedding_model=embedding_model,
+                                model_type=model_type,
+                                embedding_args=embedding_to_args.get(embedding_model),
+                                model_args=model_to_args.get("random_forest_others"),
+                                log_path=args.log_path,
+                                log_filename=args.log_filename,
+                                data_type=preprocessed_data_type)
+            else:
+                cross_validation(tweets=tweets, labels=labels,
+                                embedding_model=embedding_model,
+                                model_type=model_type,
+                                embedding_args=embedding_to_args.get(embedding_model),
+                                model_args=model_to_args.get(model_type),
+                                log_path=args.log_path,
+                                log_filename=args.log_filename,
+                                data_type=preprocessed_data_type)
