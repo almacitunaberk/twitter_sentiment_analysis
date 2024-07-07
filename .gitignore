@@ -1,3 +1,4 @@
 /src/data/*
 /src/trials/*
 /src/models/baseline_models/logs/*
+.DS_store

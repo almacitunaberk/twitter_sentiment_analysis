@@ -6,7 +6,7 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.naive_bayes import GaussianNB, MultinomialNB
+from sklearn.naive_bayes import GaussianNB, BernoulliNB
 from sklearn.metrics import accuracy_score
 import pandas as pd
 import os
@@ -26,7 +26,7 @@ def cross_validation(tweets, labels,
         print("The provided embedding model is not supported")
         return
 
-    if not model_type in ["logistic", "random_forest", "lstm", "ridge", "gaussian", "multinomial"]:
+    if not model_type in ["logistic", "random_forest", "lstm", "ridge", "gaussian", "bernoulli"]:
         print("The provided model type is not supported")
         return
 
@@ -84,7 +84,7 @@ def cross_validation(tweets, labels,
                 X_train
             model = GaussianNB()
         elif model_type == "multinomial":
-            model = MultinomialNB(alpha=model_args.get("alpha"))
+            model = BernoulliNB(alpha=model_args.get("alpha"))
 
         model.fit(X_train, training_labels)
         if model_type == "ridge":
@@ -164,7 +164,7 @@ if __name__ == "__main__":
             "max_features": 50,
         },
         "gaussian": None,
-        "multinomial": {
+        "bernoulli": {
             "alpha": 0.01,
         }
     }
@@ -177,7 +177,7 @@ if __name__ == "__main__":
         }
     }
     for embedding_model in ["bow", "tf-idf"]:
-        for model_type in ["logistic", "ridge", "random_forest", "gaussian", "multinomial"]:
+        for model_type in ["logistic", "ridge", "random_forest", "gaussian", "bernoulli"]:
             cross_validation(tweets=tweets, labels=labels,
                              embedding_model=embedding_model,
                              model_type=model_type,
