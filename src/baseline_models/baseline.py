@@ -1,5 +1,4 @@
 import argparse
-import logging
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import StratifiedKFold
@@ -13,7 +12,13 @@ import os
 import numpy as np
 from torchtext.vocab import GloVe
 import multiprocessing
-
+import sys
+filename = os.path.dirname(__file__)[:-1]
+filename = "/".join(filename.split("/")[:-1])
+sys.path.append(os.path.join(filename, 'preprocess'))
+print(sys.path[-1])
+from tokenizer import Tokenizer
+"""
 def load_glove_embeddings():
     embedding_dict = {}
     with open("../glove.twitter.27B.100d.txt", encoding='utf-8') as f:
@@ -31,7 +36,7 @@ def tweet_to_glove_embedding(tweet, embedding_dict):
     if len(embeddings) == 0:
         return np.zeros(len(embedding_dict[next(iter(embedding_dict))]))
     return np.mean(embeddings, axis=0)
-
+"""
 
 def cross_validation(tweets, labels,
                      embedding_model:str, model_type:str,
@@ -79,8 +84,9 @@ def cross_validation(tweets, labels,
                 X_val = np.asarray(X_val.todense())
         elif embedding_model == "glove":
             glove = GloVe(name="twitter.27B", dim=embedding_args.get("dimension"))
-            X_train = np.array([np.mean(glove.get_vecs_by_tokens(tweet.split(), lower_case_backup=True).numpy(), axis=0) for tweet in training_tweets], dtype="float64")
-            X_val = np.array([np.mean(glove.get_vecs_by_tokens(tweet.split(), lower_case_backup=True).numpy(), axis=0) for tweet in val_tweets], dtype="float64")
+            tokenizer = Tokenizer(reduce_len=True, segment_hashtags=True)
+            X_train = np.array([np.mean(glove.get_vecs_by_tokens(tokenizer.tokenize_tweet(tweet=tweet), lower_case_backup=True).numpy(), axis=0) for tweet in training_tweets], dtype="float64")
+            X_val = np.array([np.mean(glove.get_vecs_by_tokens(tokenizer.tokenize_tweet(tweet=tweet), lower_case_backup=True).numpy(), axis=0) for tweet in val_tweets], dtype="float64")
 
         if embedding_model in ["bow", "tf-idf"]:
             scaler = StandardScaler(with_mean=False)
@@ -160,14 +166,12 @@ if __name__ == "__main__":
     train_df = train_df.dropna()
     tweets = np.array(train_df["text"].values)
     labels = np.array(train_df["labels"].values)
-    """
     pos_tweets = np.array(train_df[train_df["labels"] == 1]["text"].values)[:1000]
     pos_labels = labels[:1000]
     neg_tweets = np.array(train_df[train_df["labels"] == 0]["text"].values)[:1000]
     neg_labels = [0 for i in range(1000)]
     tweets = np.concatenate([pos_tweets, neg_tweets])
     labels = np.concatenate([pos_labels, neg_labels])
-    """
     model_to_args = {
         "logistic": {
             "n_jobs": multiprocessing.cpu_count(),
@@ -208,12 +212,12 @@ if __name__ == "__main__":
             "dimension": 200,
         }
     }
-    """
+
     cross_validation(tweets=tweets, labels=labels,
                                 embedding_model="glove",
-                                model_type="bernoulli",
+                                model_type="ridge",
                                 embedding_args=embedding_to_args.get("glove"),
-                                model_args=model_to_args.get("bernoulli"),
+                                model_args=model_to_args.get("ridge"),
                                 log_path=args.log_path,
                                 log_filename=args.log_filename,
                                 data_type=preprocessed_data_type)
@@ -248,3 +252,4 @@ if __name__ == "__main__":
                                 log_path=args.log_path,
                                 log_filename=args.log_filename,
                                 data_type=preprocessed_data_type)
+        """

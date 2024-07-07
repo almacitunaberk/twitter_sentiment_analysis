@@ -14,7 +14,7 @@ class Tokenizer():
 
     def tokenize_tweet(self, tweet:str):
         tokens = self.tokenizer.tokenize(tweet)
-        post_tweet = " ".join([token in tokens if not self.post_process else self.process(token) for token in tokens])
+        post_tweet = " ".join([token for token in tokens])
         if self.post_process:
             post_tweet = (
                 post_tweet.replace("cannot ", "can not ")
@@ -43,6 +43,7 @@ class Tokenizer():
                 return "..."
             else:
                 return token
+
     def segment_hashtags(self, tweet:str):
         hashtags = re.findall(r"#\w+", tweet)
         if len(hashtags) == 0:
@@ -50,7 +51,6 @@ class Tokenizer():
         segmented_tweet = tweet
         for hashtag in hashtags:
             word = hashtag[1:]
-            print(word)
             segmented = wordsegment.segment(word)
             replacement = " ".join(segmented)
             segmented_tweet = segmented_tweet.replace(hashtag, replacement)
