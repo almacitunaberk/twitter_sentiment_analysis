@@ -4,12 +4,20 @@ import numpy as np
 import multiprocessing
 from typing import List
 import pandas as pd
+
 import sys
 filename = os.path.dirname(__file__)[:-1]
 filename = "/".join(filename.split("/")[:-1])
 sys.path.append(os.path.join(filename, 'preprocess'))
-from tokenizer import Tokenizer as CustomTokenizer
+
 from keras.preprocessing.text import Tokenizer
+from keras.preprocessing.sequence import pad_sequences
+from tokenizer import Tokenizer as CustomTokenizer
+from torchtext.vocab import GloVe
+from sklearn.model_selection import StratifiedKFold
+from keras.models import Sequential
+from keras.layers import Dense, Bidirectional, LSTM, Dropout, BatchNormalization, Embedding
+from sklearn.metrics import accuracy_score
 
 def write_to_log(model_type:str, model_args:dict,
                  log_path:str, log_filename:str,
@@ -33,7 +41,7 @@ def write_to_log(model_type:str, model_args:dict,
         f.write("\n-------------------------------------\n")
     print("Wrote to the log file")
 
-def cross_validation(tweets, labels, model_type:str, model_args:dict, glove_dim:int):
+def cross_validation(tweets, labels, model_type:str, glove_dim:int):
     processed_tweets = []
     lengths = []
     custom_tokenizer = CustomTokenizer(reduce_len=True, segment_hashtags=True)
@@ -42,7 +50,64 @@ def cross_validation(tweets, labels, model_type:str, model_args:dict, glove_dim:
         processed_tweets.append(" ".join(tokenized_tweet))
         lengths.append(len(tokenized_tweet))
     lengths = np.array(lengths)
+    processed_tweets = np.array(processed_tweets)
     max_len = lengths.max()
+    tokenizer = Tokenizer()
+    tokenizer.fit_on_texts(processed_tweets)
+    vocab_size = len(tokenizer.word_index)+1
+    encoded_tweets = tokenizer.texts_to_sequences(processed_tweets)
+    padded_tweets = pad_sequences(encoded_tweets, maxlen=max_len, padding="post")
+
+    embed_matrix = np.zeros((vocab_size, glove_dim))
+    glove = GloVe(name="twitter.27B", dim=glove_dim)
+    for word, i in tokenizer.word_index.items():
+        embedding_vec = glove.get_vecs_by_tokens(word)
+        if embedding_vec is not None:
+            embed_matrix[i] = embedding_vec
+
+    skf = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+    aggregated_acc = []
+
+    for i, (train_indices, test_indices) in enumerate(skf.split(padded_tweets, labels)):
+        training_tweets = padded_tweets[train_indices]
+        training_labels = labels[train_indices]
+
+        val_tweets = padded_tweets[test_indices]
+        val_labels = labels[test_indices]
+
+        accuracy = None
+        model = None
+
+        if model_type == "bilstm":
+            model = Sequential()
+            model.add(Embedding(vocab_size, glove_dim, input_length=max_len, weights=[embed_matrix], trainable=False))
+            model.add(Bidirectional(LSTM(20, return_sequences=True)))
+            model.add(Dropout(0.2))
+            model.add(BatchNormalization())
+            model.add(Bidirectional(LSTM(20, return_sequences=True)))
+            model.add(Dropout(0.2))
+            model.add(BatchNormalization())
+            model.add(Bidirectional(LSTM(20)))
+            model.add(Dropout(0.2))
+            model.add(BatchNormalization())
+            model.add(Dense(64, activation="relu"))
+            model.add(Dense(64, activation="relu"))
+            model.add(Dense(1, activation="sigmoid"))
+            model.compile(loss="binary_crossentropy", optimizer="adam", metrics=["accuracy"])
+            model.fit(training_tweets, training_labels, epochs=10, batch_size=64)
+            #y_preds = model.predict(val_tweets)
+            #accuracy = accuracy_score(val_labels, y_preds)
+            # accuracy = keras.losses.binary_crossentropy(val_labels, y_preds)
+            loss_and_metrics = model.evaluate(val_tweets, val_labels)
+            print(f"Loss: {loss_and_metrics[0]}")
+            print(f"Accuracy: {loss_and_metrics[1]}")
+            accuracy = loss_and_metrics[1]
+        aggregated_acc.append(accuracy)
+    print(aggregated_acc)
+    mean_accuracy = np.array(aggregated_acc).mean()
+    std_accuracy = np.array(aggregated_acc).std()
+    print(f"Accuracy: {mean_accuracy}, Std: {std_accuracy}")
+    return mean_accuracy, std_accuracy
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -60,6 +125,7 @@ if __name__ == "__main__":
     train_df = train_df.dropna()
     tweets = np.array(train_df["text"].values)
     labels = np.array(train_df["labels"].values)
+    """
     pos_tweets = np.array(train_df[train_df["labels"] == 1]["text"].values)[:1000]
     pos_labels = labels[:1000]
     neg_tweets = np.array(train_df[train_df["labels"] == 0]["text"].values)[:1000]
@@ -68,7 +134,6 @@ if __name__ == "__main__":
     labels = np.concatenate([pos_labels, neg_labels])
     model_to_args = {
     }
-    """
     cross_validation(tweets=tweets, labels=labels,
                                 embedding_model="glove",
                                 model_type="ridge",
@@ -79,17 +144,13 @@ if __name__ == "__main__":
                                 data_type=preprocessed_data_type)
     """
     for glove_dim in [100, 200]:
-        for model_type in ["bilstm", "mlp", "cnn"]:
+        for model_type in ["bilstm"]:
             mean_accuracy = None
             std_accuracy = None
-
             mean_accuracy, std_accuracy = cross_validation(tweets=tweets, labels=labels,
                                                            glove_dim=glove_dim,
-                                                            model_type=model_type,
-                                                            model_args=model_to_args.get(model_type))
-            """
+                                                            model_type=model_type)
             write_to_log(glove_dim=glove_dim, model_type=model_type, model_args=model_to_args.get(model_type),
                          log_path=args.log_path, log_filename=args.log_filename,
                          data_type=preprocessed_data_type, mean_accuracy=mean_accuracy, std_accuracy=std_accuracy)
-            """
 
