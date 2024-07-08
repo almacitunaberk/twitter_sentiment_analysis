@@ -16,42 +16,49 @@ import sys
 filename = os.path.dirname(__file__)[:-1]
 filename = "/".join(filename.split("/")[:-1])
 sys.path.append(os.path.join(filename, 'preprocess'))
-print(sys.path[-1])
 from tokenizer import Tokenizer
-"""
-def load_glove_embeddings():
-    embedding_dict = {}
-    with open("../glove.twitter.27B.100d.txt", encoding='utf-8') as f:
-        for line in f:
-            values = line.split()
-            word = values[0]
-            vector = np.asarray(values[1:], dtype='float32')
-            embedding_dict[word] = vector
-    return embedding_dict
+from typing import List
 
-# Function to convert tweets to GloVe embeddings
-def tweet_to_glove_embedding(tweet, embedding_dict):
-    words = tweet.split()
-    embeddings = [embedding_dict[word] for word in words if word in embedding_dict]
-    if len(embeddings) == 0:
-        return np.zeros(len(embedding_dict[next(iter(embedding_dict))]))
-    return np.mean(embeddings, axis=0)
-"""
+def write_to_log(embedding_model:str, embedding_args:dict,
+                 model_type:str, model_args:dict,
+                 log_path:str, log_filename:str,
+                 mean_accuracy:float, std_accuracy:str,
+                 data_type:List[str]):
+    print("Logging the results to the log file")
+    log = f"{embedding_model}"
+    if embedding_args is not None:
+        for key in embedding_args:
+            arg = embedding_args.get(key)
+            log = f"{log} {key}:{arg}"
+        log = f"{log} + {model_type}"
+    if model_args is not None:
+        for key in model_args:
+            arg = model_args.get(key)
+            log = f"{log} {key}:{arg}"
+    log = f"{log} \n"
+    log = f"{log}\naccuracy: {mean_accuracy} std: {std_accuracy}\n"
+    with open(f"{log_path}/{log_filename}.txt", "a") as f:
+        for word in data_type:
+            f.write(f"{word} ")
+        f.write("\n")
+        f.write(log)
+        f.write("\n-------------------------------------\n")
+    print("Wrote to the log file")
+
 
 def cross_validation(tweets, labels,
                      embedding_model:str, model_type:str,
-                     log_path:str, log_filename:str, data_type=[str],
                      embedding_args:dict=None, model_args:dict=None):
 
     if len(tweets) != len(labels):
         print("The length of the tweets and the labels do not match.")
         return
 
-    if not embedding_model in ["bow", "tf-idf", "glove", "fasttext"]:
+    if not embedding_model in ["bow", "tf-idf", "glove"]:
         print("The provided embedding model is not supported")
         return
 
-    if not model_type in ["logistic", "random_forest", "lstm", "ridge", "gaussian", "bernoulli"]:
+    if not model_type in ["logistic", "random_forest", "ridge", "gaussian", "bernoulli"]:
         print("The provided model type is not supported")
         return
 
@@ -129,26 +136,7 @@ def cross_validation(tweets, labels,
     mean_accuracy = np.array(aggregated_acc).mean()
     std_accuracy = np.array(aggregated_acc).std()
     print(f"{model_type} done. Accuracy: {mean_accuracy} Std: {std_accuracy}")
-    print("Logging the results to the log file")
-    log = f"{embedding_model}"
-    if embedding_args is not None:
-        for key in embedding_args:
-            arg = embedding_args.get(key)
-            log = f"{log} {key}:{arg}"
-        log = f"{log} + {model_type}"
-    if model_args is not None:
-        for key in model_args:
-            arg = model_args.get(key)
-            log = f"{log} {key}:{arg}"
-    log = f"{log} \n"
-    log = f"{log}\naccuracy: {mean_accuracy} std: {std_accuracy}\n"
-    with open(f"{log_path}/{log_filename}.txt", "a") as f:
-        for word in data_type:
-            f.write(f"{word} ")
-        f.write("\n")
-        f.write(log)
-        f.write("\n-------------------------------------\n")
-    print("Wrote to the log file")
+    return mean_accuracy, std_accuracy
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -166,12 +154,14 @@ if __name__ == "__main__":
     train_df = train_df.dropna()
     tweets = np.array(train_df["text"].values)
     labels = np.array(train_df["labels"].values)
+    """
     pos_tweets = np.array(train_df[train_df["labels"] == 1]["text"].values)[:1000]
     pos_labels = labels[:1000]
     neg_tweets = np.array(train_df[train_df["labels"] == 0]["text"].values)[:1000]
     neg_labels = [0 for i in range(1000)]
     tweets = np.concatenate([pos_tweets, neg_tweets])
     labels = np.concatenate([pos_labels, neg_labels])
+    """
     model_to_args = {
         "logistic": {
             "n_jobs": multiprocessing.cpu_count(),
@@ -212,7 +202,7 @@ if __name__ == "__main__":
             "dimension": 200,
         }
     }
-
+    """
     cross_validation(tweets=tweets, labels=labels,
                                 embedding_model="glove",
                                 model_type="ridge",
@@ -224,32 +214,25 @@ if __name__ == "__main__":
     """
     for embedding_model in ["bow", "tf-idf", "glove"]:
         for model_type in ["logistic", "ridge", "random_forest", "gaussian", "bernoulli"]:
-            if model_type == "random_forest":
-                if embedding_model == "glove":
-                    cross_validation(tweets=tweets, labels=labels,
-                                embedding_model=embedding_model,
-                                model_type=model_type,
-                                embedding_args=embedding_to_args.get(embedding_model),
-                                model_args=model_to_args.get("random_forest_glove"),
-                                log_path=args.log_path,
-                                log_filename=args.log_filename,
-                                data_type=preprocessed_data_type)
-                else:
-                    cross_validation(tweets=tweets, labels=labels,
-                                embedding_model=embedding_model,
-                                model_type=model_type,
-                                embedding_args=embedding_to_args.get(embedding_model),
-                                model_args=model_to_args.get("random_forest_others"),
-                                log_path=args.log_path,
-                                log_filename=args.log_filename,
-                                data_type=preprocessed_data_type)
-            else:
-                cross_validation(tweets=tweets, labels=labels,
-                                embedding_model=embedding_model,
-                                model_type=model_type,
-                                embedding_args=embedding_to_args.get(embedding_model),
-                                model_args=model_to_args.get(model_type),
-                                log_path=args.log_path,
-                                log_filename=args.log_filename,
-                                data_type=preprocessed_data_type)
-        """
+
+            mean_accuracy = None
+            std_accuracy = None
+
+            model_to_args_key = model_type
+
+            if model_type == "random_forest" and embedding_model == "glove":
+                model_to_args_key = "random_forest_glove"
+            elif model_type == "random_forest" and embedding_model != "glove":
+                model_to_args_key = "random_forest_others"
+
+            mean_accuracy, std_accuracy = cross_validation(tweets=tweets, labels=labels,
+                                                           embedding_model=embedding_model,
+                                                           model_type=model_type,
+                                                           embedding_args=embedding_to_args.get(embedding_model),
+                                                           model_args=model_to_args.get(model_to_args_key))
+
+            write_to_log(embedding_model=embedding_model, embedding_args=embedding_to_args,
+                         model_type=model_type, model_args=model_to_args, log_path=args.log_path,
+                         log_filename=args.log_filename, data_type=preprocessed_data_type,
+                         mean_accuracy=mean_accuracy, std_accuracy=std_accuracy)
+
