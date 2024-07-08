@@ -15,6 +15,11 @@ scipy = "==1.10.1"
 torch = "*"
 torchvision = "*"
 torchtext = "*"
+h5py = "*"
+tensorflow-macos = "*"
+tensorflow-metal = "*"
+jax = "*"
+jaxlib = "*"
 
 [dev-packages]
 

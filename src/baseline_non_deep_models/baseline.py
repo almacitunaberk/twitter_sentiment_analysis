@@ -154,14 +154,12 @@ if __name__ == "__main__":
     train_df = train_df.dropna()
     tweets = np.array(train_df["text"].values)
     labels = np.array(train_df["labels"].values)
-    """
     pos_tweets = np.array(train_df[train_df["labels"] == 1]["text"].values)[:1000]
     pos_labels = labels[:1000]
     neg_tweets = np.array(train_df[train_df["labels"] == 0]["text"].values)[:1000]
     neg_labels = [0 for i in range(1000)]
     tweets = np.concatenate([pos_tweets, neg_tweets])
     labels = np.concatenate([pos_labels, neg_labels])
-    """
     model_to_args = {
         "logistic": {
             "n_jobs": multiprocessing.cpu_count(),
@@ -231,8 +229,8 @@ if __name__ == "__main__":
                                                            embedding_args=embedding_to_args.get(embedding_model),
                                                            model_args=model_to_args.get(model_to_args_key))
 
-            write_to_log(embedding_model=embedding_model, embedding_args=embedding_to_args,
-                         model_type=model_type, model_args=model_to_args, log_path=args.log_path,
+            write_to_log(embedding_model=embedding_model, embedding_args=embedding_to_args.get(embedding_model),
+                         model_type=model_type, model_args=model_to_args.get(model_to_args_key), log_path=args.log_path,
                          log_filename=args.log_filename, data_type=preprocessed_data_type,
                          mean_accuracy=mean_accuracy, std_accuracy=std_accuracy)
 
