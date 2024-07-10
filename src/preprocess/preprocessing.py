@@ -284,9 +284,11 @@ class Preprocessor():
         if self.parallelize:
             splitted_pos_tweets = self.split_dataset(np.array(pos_tweets))
             splitted_neg_tweets = self.split_dataset(np.array(neg_tweets))
+            """
             for i in range(len(splitted_pos_tweets)):
                 splitted_pos_tweets[i] = splitted_pos_tweets[i][:10]
                 splitted_neg_tweets[i] = splitted_neg_tweets[i][:10]
+            """
             with multiprocessing.Manager() as manager:
                 manager = multiprocessing.Manager()
                 pos_processed_list = manager.list()
