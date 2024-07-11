@@ -141,6 +141,7 @@ class Tokenizer():
         self.post_process = post_process
         self.reduce_len = reduce_len
         self.segmentation = segment_hashtags
+        wordsegment.load()
         self.tokenizer = TweetTokenizer(reduce_len=reduce_len)
 
     def tokenize_tweet(self, tweet:str):

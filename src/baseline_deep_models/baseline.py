@@ -19,6 +19,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from collections import Counter
 from torch.utils.data import TensorDataset, DataLoader
+import time
+from tqdm import tqdm
 
 if torch.cuda.is_available():
     print("GPU is available")
@@ -51,11 +53,12 @@ class BiLSTM(nn.Module):
         return pred
 
 
-def write_to_log(model_type:str, model_args:dict,
+def write_to_log(model_type:str,
                  log_path:str, log_filename:str,
                  mean_accuracy:float, std_accuracy:str,
                  glove_dim: int,
-                 data_type:List[str]):
+                 data_type:List[str],
+                 model_args:dict=None):
 
     print("Logging the results to the log file")
     log = f"glove {glove_dim} + {model_type}"
@@ -74,20 +77,27 @@ def write_to_log(model_type:str, model_args:dict,
     print("Wrote to the log file")
 
 def load_glove_embeddings(glove_path: str):
+    print("Loading GloVe embeddings")
     embeddings = {}
+    total = 0
     with open(glove_path, "r") as f:
-        for line in f:
-            word, weights = line.split(maxsplit=1)
-            weights = np.fromstring(weights, "f", sep=" ")
-            embeddings[word] = weights
+        total = len(f.readlines())
+
+    with open(glove_path, "r") as f:
+        with tqdm(total=total) as pbar:
+            for line in f:
+                word, weights = line.split(maxsplit=1)
+                weights = np.fromstring(weights, "f", sep=" ")
+                embeddings[word] = weights
+                pbar.update(1)
     return embeddings
 
-def tweet_embed(words, embeddings):
+def tweet_embed(words, embeddings, glove_dim):
     unknown_indices = []
-    mean = np.zeros(len(embeddings["king"]))
+    mean = np.zeros(glove_dim)
     for i in range(len(words)):
         if words[i] in embeddings.keys():
-            words[i] = embeddings[i]
+            words[i] = embeddings[words[i]]
             mean += words[i]
         else:
             unknown_indices.append(i)
@@ -97,20 +107,24 @@ def tweet_embed(words, embeddings):
         words[i] = mean
     return np.array(words)
 
-def cross_validation(data, model_type:str, glove_dim:int):
+def cross_validation(data, model_type:str, glove_dim:int, glove_path:str):
+
     custom_tokenizer = Tokenizer(reduce_len=True, segment_hashtags=True, post_process=True)
 
-    data["text"] = data["text"].apply(lambda x: custom_tokenizer.tokenize_tweet(x))
-    data["text"] = data["text"].apply(lambda x: tweet_embed(x))
+    embeddings = load_glove_embeddings(glove_path)
 
-    mask_zero_length = (data["text"].str.len() != 0)
-    data = data.iloc[mask_zero_length]
+    print("Transforming tweets")
+
+    data["text"] = data["text"].apply(lambda x: custom_tokenizer.tokenize_tweet(x))
+    data[data["text"].map(len) >= 1]
+    data["text"] = data["text"].apply(lambda x: tweet_embed(x, embeddings, glove_dim))
+
 
     skf = StratifiedKFold(n_splits=2, shuffle=True, random_state=42)
     aggregated_acc = []
 
     tweets = data["text"].values
-    labels = data["text"].values
+    labels = data["labels"].values
 
     aggregated_acc = []
 
@@ -131,6 +145,7 @@ def cross_validation(data, model_type:str, glove_dim:int):
             train_accs = []
             val_accs = []
             for epoch in range(4):
+                epoch_start_time = time.time()
                 print("Epoch: {}".format(epoch+1))
                 train_loss = 0
                 correct = 0
@@ -198,8 +213,8 @@ def cross_validation(data, model_type:str, glove_dim:int):
                 val_losses.append(val_loss/len(val_tweets))
                 val_accs.append(correct/len(val_labels))
                 print("Epoch summary")
-                print(f'Train Loss: {train_losses[-1]:7.2f}  Train Accuracy: {train_accuracies[-1]*100:6.3f}%')
-                print(f'Validation Loss: {val_losses[-1]:7.2f}  Validation Accuracy: {val_accuracies[-1]*100:6.3f}%')
+                print(f'Train Loss: {train_losses[-1]:7.2f}  Train Accuracy: {train_accs[-1]*100:6.3f}%')
+                print(f'Validation Loss: {val_losses[-1]:7.2f}  Validation Accuracy: {val_accs[-1]*100:6.3f}%')
                 print(f'Duration: {time.time() - epoch_start_time:.0f} seconds')
                 print('')
 
@@ -214,14 +229,16 @@ if __name__ == "__main__":
     parser.add_argument("--input_path", help="Input path of the preprocessed csv file")
     parser.add_argument("--log_path", help="Path of the log folder")
     parser.add_argument("--log_filename", help="Name of the log file", default="logs")
+    parser.add_argument("--glove_path", help="Path of the Glove embeddings", default="logs")
     args = parser.parse_args()
-    if args.input_path is None or args.log_path is None or args.log_filename is None:
-        print("Input path flag, log path or log filename flag cannot be none")
+    if args.input_path is None or args.log_path is None or args.log_filename is None or args.glove_path is None:
+        print("Input path flag, log path, glove_path or log filename flag cannot be none")
         exit()
     if not os.path.exists(f"{args.log_path}"):
         os.makedirs(f"{args.log_path}")
     preprocessed_data_type = args.input_path.split("/")[-1][:-4].split("_")[1:]
     train_df = pd.read_csv(args.input_path)
+    train_df = train_df.sample(n=100000) # TODO: Comment this line when not testing
     train_df = train_df.dropna()
     """
     pos_tweets = np.array(train_df[train_df["labels"] == 1]["text"].values)[:1000]
@@ -241,14 +258,16 @@ if __name__ == "__main__":
                                 log_filename=args.log_filename,
                                 data_type=preprocessed_data_type)
     """
-    for glove_dim in [100, 200]:
+
+    for glove_dim in [100]:
         for model_type in ["bilstm"]:
             mean_accuracy = None
             std_accuracy = None
             mean_accuracy, std_accuracy = cross_validation(data=train_df,
                                                            glove_dim=glove_dim,
-                                                            model_type=model_type)
-            write_to_log(glove_dim=glove_dim, model_type=model_type, model_args=model_to_args.get(model_type),
+                                                            model_type=model_type,
+                                                            glove_path=args.glove_path)
+            write_to_log(glove_dim=glove_dim, model_type=model_type,
                          log_path=args.log_path, log_filename=args.log_filename,
                          data_type=preprocessed_data_type, mean_accuracy=mean_accuracy, std_accuracy=std_accuracy)
 
