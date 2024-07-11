@@ -10,14 +10,22 @@ filename = os.path.dirname(__file__)[:-1]
 filename = "/".join(filename.split("/")[:-1])
 sys.path.append(os.path.join(filename, 'preprocess'))
 
-from keras.preprocessing.text import Tokenizer
-from keras.preprocessing.sequence import pad_sequences
-from tokenizer import Tokenizer as CustomTokenizer
+from tokenizer import Tokenizer
 from torchtext.vocab import GloVe
 from sklearn.model_selection import StratifiedKFold
-from keras.models import Sequential
-from keras.layers import Dense, Bidirectional, LSTM, Dropout, BatchNormalization, Embedding
 from sklearn.metrics import accuracy_score
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from collections import Counter
+from torch.utils.data import TensorDataset, DataLoader
+
+if torch.cuda.is_available():
+    print("GPU is available")
+else:
+    print("GPU is NOT available")
+
+device = torch.device("gpu") if torch.cuda.is_available() else torch.device("cpu")
 
 def write_to_log(model_type:str, model_args:dict,
                  log_path:str, log_filename:str,
@@ -44,11 +52,10 @@ def write_to_log(model_type:str, model_args:dict,
 def cross_validation(tweets, labels, model_type:str, glove_dim:int):
     processed_tweets = []
     lengths = []
-    custom_tokenizer = CustomTokenizer(reduce_len=True, segment_hashtags=True)
+    custom_tokenizer = Tokenizer(reduce_len=True, segment_hashtags=True, post_process=True)
     for tweet in tweets:
-        tokenized_tweet = custom_tokenizer.tokenize_tweet(tweet=tweet)
-        processed_tweets.append(" ".join(tokenized_tweet))
-        lengths.append(len(tokenized_tweet))
+        processed_tweet = custom_tokenizer.tokenize_tweet(tweet=tweet)
+        lengths.append(len(processed_tweet))
     lengths = np.array(lengths)
     processed_tweets = np.array(processed_tweets)
     max_len = lengths.max()
