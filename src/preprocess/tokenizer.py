@@ -173,7 +173,7 @@ class Tokenizer():
             post_tweet = re.sub("'", " ", post_tweet)
         if self.segmentation:
             post_tweet = self.segment_hashtags(post_tweet)
-        return post_tweet
+        return post_tweet.split()
 
     """
     def expand_contractions(self, tweet: str):

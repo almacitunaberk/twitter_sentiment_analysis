@@ -27,6 +27,30 @@ else:
 
 device = torch.device("gpu") if torch.cuda.is_available() else torch.device("cpu")
 
+class BiLSTM(nn.Module):
+    def __init__(self, embed_dim, drop_prob):
+        super().__init__()
+        self.hidden_size = 100
+        self.input_size = embed_dim
+        self.num_layers = 1
+        self.bidirectional = True
+        self.num_directions = 1
+        self.dropout1 = nn.Dropout(p=drop_prob)
+
+        if self.bidirectional:
+            self.num_directions = 2
+
+        self.lstm = nn.LSTM(self.input_size, self.hidden_size, self.num_layers, bidirectional=self.bidirectional)
+        self.fc = nn.Linear(self.hidden_size*self.num_directions, 1)
+
+    def forward(self, tweet):
+        lstm_out, _ = self.lstm(tweet.view(len(tweet), 1, -1))
+        x = self.dropout1(lstm_out.view(len(tweet), -1))
+        output = self.fc(x)
+        pred = torch.sigmoid(output[-1])
+        return pred
+
+
 def write_to_log(model_type:str, model_args:dict,
                  log_path:str, log_filename:str,
                  mean_accuracy:float, std_accuracy:str,
@@ -49,72 +73,141 @@ def write_to_log(model_type:str, model_args:dict,
         f.write("\n-------------------------------------\n")
     print("Wrote to the log file")
 
-def cross_validation(tweets, labels, model_type:str, glove_dim:int):
-    processed_tweets = []
-    lengths = []
+def load_glove_embeddings(glove_path: str):
+    embeddings = {}
+    with open(glove_path, "r") as f:
+        for line in f:
+            word, weights = line.split(maxsplit=1)
+            weights = np.fromstring(weights, "f", sep=" ")
+            embeddings[word] = weights
+    return embeddings
+
+def tweet_embed(words, embeddings):
+    unknown_indices = []
+    mean = np.zeros(len(embeddings["king"]))
+    for i in range(len(words)):
+        if words[i] in embeddings.keys():
+            words[i] = embeddings[i]
+            mean += words[i]
+        else:
+            unknown_indices.append(i)
+    if (len(words) - len(unknown_indices)) != 0:
+        mean /= (len(words) - len(unknown_indices))
+    for i in unknown_indices:
+        words[i] = mean
+    return np.array(words)
+
+def cross_validation(data, model_type:str, glove_dim:int):
     custom_tokenizer = Tokenizer(reduce_len=True, segment_hashtags=True, post_process=True)
-    for tweet in tweets:
-        processed_tweet = custom_tokenizer.tokenize_tweet(tweet=tweet)
-        lengths.append(len(processed_tweet))
-    lengths = np.array(lengths)
-    processed_tweets = np.array(processed_tweets)
-    max_len = lengths.max()
-    tokenizer = Tokenizer()
-    tokenizer.fit_on_texts(processed_tweets)
-    vocab_size = len(tokenizer.word_index)+1
-    encoded_tweets = tokenizer.texts_to_sequences(processed_tweets)
-    padded_tweets = pad_sequences(encoded_tweets, maxlen=max_len, padding="post")
 
-    embed_matrix = np.zeros((vocab_size, glove_dim))
-    glove = GloVe(name="twitter.27B", dim=glove_dim)
-    for word, i in tokenizer.word_index.items():
-        embedding_vec = glove.get_vecs_by_tokens(word)
-        if embedding_vec is not None:
-            embed_matrix[i] = embedding_vec
+    data["text"] = data["text"].apply(lambda x: custom_tokenizer.tokenize_tweet(x))
+    data["text"] = data["text"].apply(lambda x: tweet_embed(x))
 
-    skf = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+    mask_zero_length = (data["text"].str.len() != 0)
+    data = data.iloc[mask_zero_length]
+
+    skf = StratifiedKFold(n_splits=2, shuffle=True, random_state=42)
     aggregated_acc = []
 
-    for i, (train_indices, test_indices) in enumerate(skf.split(padded_tweets, labels)):
-        training_tweets = padded_tweets[train_indices]
+    tweets = data["text"].values
+    labels = data["text"].values
+
+    aggregated_acc = []
+
+    for i, (train_indices, test_indices) in enumerate(skf.split(tweets, labels)):
+        training_tweets = tweets[train_indices]
         training_labels = labels[train_indices]
 
-        val_tweets = padded_tweets[test_indices]
+        val_tweets = tweets[test_indices]
         val_labels = labels[test_indices]
 
-        accuracy = None
-        model = None
-
         if model_type == "bilstm":
-            model = Sequential()
-            model.add(Embedding(vocab_size, glove_dim, input_length=max_len, weights=[embed_matrix], trainable=False))
-            model.add(Bidirectional(LSTM(20, return_sequences=True)))
-            model.add(Dropout(0.2))
-            model.add(BatchNormalization())
-            model.add(Bidirectional(LSTM(20, return_sequences=True)))
-            model.add(Dropout(0.2))
-            model.add(BatchNormalization())
-            model.add(Bidirectional(LSTM(20)))
-            model.add(Dropout(0.2))
-            model.add(BatchNormalization())
-            model.add(Dense(64, activation="relu"))
-            model.add(Dense(64, activation="relu"))
-            model.add(Dense(1, activation="sigmoid"))
-            model.compile(loss="binary_crossentropy", optimizer="adam", metrics=["accuracy"])
-            model.fit(training_tweets, training_labels, epochs=10, batch_size=64)
-            #y_preds = model.predict(val_tweets)
-            #accuracy = accuracy_score(val_labels, y_preds)
-            # accuracy = keras.losses.binary_crossentropy(val_labels, y_preds)
-            loss_and_metrics = model.evaluate(val_tweets, val_labels)
-            print(f"Loss: {loss_and_metrics[0]}")
-            print(f"Accuracy: {loss_and_metrics[1]}")
-            accuracy = loss_and_metrics[1]
-        aggregated_acc.append(accuracy)
-    print(aggregated_acc)
-    mean_accuracy = np.array(aggregated_acc).mean()
-    std_accuracy = np.array(aggregated_acc).std()
-    print(f"Accuracy: {mean_accuracy}, Std: {std_accuracy}")
-    return mean_accuracy, std_accuracy
+            bilstm = BiLSTM(glove_dim, 0.2)
+            loss_func = nn.BCELoss()
+            optimizer = torch.optim.Adam(bilstm.parameters(), lr=0.001)
+            scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.1)
+            train_losses = []
+            val_losses = []
+            train_accs = []
+            val_accs = []
+            for epoch in range(4):
+                print("Epoch: {}".format(epoch+1))
+                train_loss = 0
+                correct = 0
+                bilstm.train()
+                for i in range(len(training_tweets)):
+                    bilstm.zero_grad()
+                    tweet = torch.FloatTensor(training_tweets[i])
+                    label = torch.FloatTensor(np.array([training_labels[i]]))
+                    if torch.cuda.is_available():
+                        tweet = tweet.cuda()
+                        label = label.cuda()
+                    pred = bilstm(tweet)
+                    loss = loss_func(pred, label)
+                    lambda_param = torch.tensor(0.001)
+                    l2_reg = torch.tensor(0.)
+
+                    if torch.cuda.is_available():
+                        lambda_param = lambda_param.cuda()
+                        l2_reg = l2_reg.cuda()
+                    for param in bilstm.parameters():
+                        if torch.cuda.is_available():
+                            l2_reg += torch.norm(param).cuda()
+                        else:
+                            l2_reg += torch.norm(param)
+                    loss += lambda_param * l2_reg
+
+                    pred = pred.item()
+                    if pred > 0.5:
+                        pred = 1
+                    else:
+                        pred = 0
+                    if pred == int(label.item()):
+                        correct += 1
+                    train_loss += loss.item()
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+
+                    if (i+1)%1000 == 0:
+                        print("Processed {} tweets out of {}".format(i+1, len(training_tweets)))
+                train_losses.append(train_loss/len(training_tweets))
+                train_accs.append(correct / len(training_tweets))
+
+                val_loss = 0
+                correct = 0
+                bilstm.eval()
+                with torch.no_grad():
+                    for i in range(len(val_tweets)):
+                        tweet = torch.FloatTensor(val_tweets[i])
+                        label = torch.FloatTensor(np.array([val_labels[i]]))
+
+                        if torch.cuda.is_available():
+                            tweet = tweet.cuda()
+                            label = label.cuda()
+                        pred = bilstm(tweet)
+                        loss = loss_func(pred, label)
+                        val_loss += loss.item()
+                        pred = pred.item()
+                        if pred > 0.5:
+                            pred = 1
+                        else:
+                            pred = 0
+                        if pred == int(label.item()):
+                            correct += 1
+                val_losses.append(val_loss/len(val_tweets))
+                val_accs.append(correct/len(val_labels))
+                print("Epoch summary")
+                print(f'Train Loss: {train_losses[-1]:7.2f}  Train Accuracy: {train_accuracies[-1]*100:6.3f}%')
+                print(f'Validation Loss: {val_losses[-1]:7.2f}  Validation Accuracy: {val_accuracies[-1]*100:6.3f}%')
+                print(f'Duration: {time.time() - epoch_start_time:.0f} seconds')
+                print('')
+
+                scheduler.step()
+            aggregated_acc.append(val_accs[-1])
+            mean_accuracy = np.array(aggregated_acc).mean()
+            std_accuracy = np.array(aggregated_acc).std()
+            return mean_accuracy, std_accuracy
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -130,8 +223,6 @@ if __name__ == "__main__":
     preprocessed_data_type = args.input_path.split("/")[-1][:-4].split("_")[1:]
     train_df = pd.read_csv(args.input_path)
     train_df = train_df.dropna()
-    tweets = np.array(train_df["text"].values)
-    labels = np.array(train_df["labels"].values)
     """
     pos_tweets = np.array(train_df[train_df["labels"] == 1]["text"].values)[:1000]
     pos_labels = labels[:1000]
@@ -154,7 +245,7 @@ if __name__ == "__main__":
         for model_type in ["bilstm"]:
             mean_accuracy = None
             std_accuracy = None
-            mean_accuracy, std_accuracy = cross_validation(tweets=tweets, labels=labels,
+            mean_accuracy, std_accuracy = cross_validation(data=train_df,
                                                            glove_dim=glove_dim,
                                                             model_type=model_type)
             write_to_log(glove_dim=glove_dim, model_type=model_type, model_args=model_to_args.get(model_type),
