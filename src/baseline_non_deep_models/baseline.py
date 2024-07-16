@@ -1,3 +1,4 @@
+import pickle
 import argparse
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
@@ -136,30 +137,50 @@ def cross_validation(tweets, labels,
     mean_accuracy = np.array(aggregated_acc).mean()
     std_accuracy = np.array(aggregated_acc).std()
     print(f"{model_type} done. Accuracy: {mean_accuracy} Std: {std_accuracy}")
+    model_save_name = f"{embedding_model}"
+    if embedding_args is not None:
+        for key in embedding_args:
+            arg = embedding_args.get(key)
+            log = f"{log}_{key}_{arg}"
+        log = f"{log}_{model_type}"
+    if model_args is not None:
+        for key in model_args:
+            arg = model_args.get(key)
+            log = f"{log}_{key}_{arg}"
+    log = f"{log}.pkl"
+    with open(log, "wb") as f:
+        pickle.dump(model, f, protocol=5)
     return mean_accuracy, std_accuracy
 
 if __name__ == "__main__":
+    log_file = open("/home/ubuntu/non_deep_model_logs.txt", "w")
+    sys.stdout = log_file
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_path", help="Input path of the preprocessed csv file")
     parser.add_argument("--log_path", help="Path of the log folder")
     parser.add_argument("--log_filename", help="Name of the log file", default="logs")
+    parser.add_argument("--save_path")
     args = parser.parse_args()
-    if args.input_path is None or args.log_path is None or args.log_filename is None:
-        print("Input path flag, log path or log filename flag cannot be none")
+    if args.input_path is None or args.log_path is None or args.log_filename is None or args.save_path is None:
+        print("Input path flag, save path, log path or log filename flag cannot be none")
         exit()
     if not os.path.exists(f"{args.log_path}"):
         os.makedirs(f"{args.log_path}")
+    if not os.path.exists(f"{args.save_path}"):
+        os.makedirs(f"{args.save_path}")
     preprocessed_data_type = args.input_path.split("/")[-1][:-4].split("_")[1:]
     train_df = pd.read_csv(args.input_path)
     train_df = train_df.dropna()
     tweets = np.array(train_df["text"].values)
     labels = np.array(train_df["labels"].values)
+    """
     pos_tweets = np.array(train_df[train_df["labels"] == 1]["text"].values)[:1000]
     pos_labels = labels[:1000]
     neg_tweets = np.array(train_df[train_df["labels"] == 0]["text"].values)[:1000]
     neg_labels = [0 for i in range(1000)]
     tweets = np.concatenate([pos_tweets, neg_tweets])
     labels = np.concatenate([pos_labels, neg_labels])
+    """
     model_to_args = {
         "logistic": {
             "n_jobs": multiprocessing.cpu_count(),
@@ -227,10 +248,12 @@ if __name__ == "__main__":
                                                            embedding_model=embedding_model,
                                                            model_type=model_type,
                                                            embedding_args=embedding_to_args.get(embedding_model),
-                                                           model_args=model_to_args.get(model_to_args_key))
+                                                           model_args=model_to_args.get(model_to_args_key).
+                                                           save_path=args.save_path)
 
             write_to_log(embedding_model=embedding_model, embedding_args=embedding_to_args.get(embedding_model),
                          model_type=model_type, model_args=model_to_args.get(model_to_args_key), log_path=args.log_path,
                          log_filename=args.log_filename, data_type=preprocessed_data_type,
                          mean_accuracy=mean_accuracy, std_accuracy=std_accuracy)
+    log_file.close()
 
