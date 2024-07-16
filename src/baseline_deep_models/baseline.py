@@ -22,8 +22,6 @@ from torch.utils.data import TensorDataset, DataLoader
 import time
 from tqdm import tqdm
 from sklearn.model_selection import train_test_split
-from torchtext import datasets
-from torchtext import data
 import torchtext
 
 if torch.cuda.is_available():
@@ -31,7 +29,7 @@ if torch.cuda.is_available():
 else:
     print("GPU is NOT available")
 
-#device = torch.device("gpu") if torch.cuda.is_available() else torch.device("cpu")
+device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 class BiLSTM(nn.Module):
     def __init__(self, embed_dim, drop_prob):
@@ -50,27 +48,14 @@ class BiLSTM(nn.Module):
         self.fc = nn.Linear(self.hidden_size*self.num_directions, 1)
 
     def forward(self, tweet):
+        batch_size = tweet.size(0)
         lstm_out, _ = self.lstm(tweet.view(len(tweet), 1, -1))
         x = self.dropout1(lstm_out.view(len(tweet), -1))
         output = self.fc(x)
         pred = torch.sigmoid(output[-1])
+        pred = pred.view(batch_size, -1)
+        pred = pred[:, -1]
         return pred
-
-class CustomDataset(torchtext.data.Dataset):
-    def __init__(self, data, TEXT, LABEL):
-        fields = [("tweet", TEXT), ("label", LABEL), (None, None)]
-        dataset = []
-        for i in range(data.shape[0]):
-            tweet = data.text[i]
-            label = data.labels[i]
-            dataset.append(data.Example.fromlist([text, label], fields))
-
-    @classmethod
-    def splits(cls, text_field, label_field, root='data',
-               train='train', test='test', **kwargs):
-        return super().splits(
-            root, text_field=text_field, label_field=label_field,
-            train=train, validation=None, test=test, **kwargs)
 
 
 def write_to_log(model_type:str,
@@ -126,12 +111,8 @@ def binary_accuracy(preds, y):
     """
     Returns accuracy per batch, i.e. if you get 8/10 right, this returns 0.8, NOT 8
     """
-
-    #round predictions to the closest integer
-    rounded_preds = torch.round(torch.sigmoid(preds))
-    correct = (rounded_preds == y).float() #convert into float for division
-    acc = correct.sum()/len(correct)
-    return acc
+    preds = torch.round(preds.squeeze())
+    return torch.sum(preds == y.squeeze()).item()
 
 def cross_validation(df, model_type:str, glove_dim:int, glove_path:str):
 
@@ -147,32 +128,28 @@ def cross_validation(df, model_type:str, glove_dim:int, glove_path:str):
 
     train, valid = train_test_split(df, test_size=0.2, random_state=42)
 
-    text_field = data.Field()
-    label_field = data.LabelField(dtype=torch.float)
-    fields = [('text',text_field),('label',label_field),(None, None)]
-
-    train = CustomDataset(train,text_field,label_field)
-    valid = CustomDataset(valid,text_field,label_field)
-
-    print("Number of training samples: {}".format(len(train)))
-    print("Number of validation samples: {}".format(len(valid)))
-
     BATCH_SIZE = 50
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    #train_iterator, valid_iterator, test_iterator = data.BucketIterator.splits((train_data, valid_data, test), batch_size=BATCH_SIZE,device=device)
-    train_iterator = data.BucketIterator(train_data , batch_size=BATCH_SIZE,device=device)
-    valid_iterator = data.BucketIterator(valid_data, batch_size=BATCH_SIZE,device=device)
-    test_iterator = data.BucketIterator(test, batch_size=BATCH_SIZE,device=device)
+    train_tweets = np.asarray(train["text"].values)
+    train_labels = np.asarray(train["labels"].values)
 
-    print("Length of train iterator: {}".format(len(train_iterator)))
+    val_tweets = np.asarray(valid["text"].values)
+    val_labels = np.asarray(valid["labels"].values)
 
+    train_data = TensorDataset(torch.from_numpy(train_tweets), torch.from_numpy(train_labels))
+    val_data = TensorDataset(torch.from_numpy(val_tweets), torch.from_numpy(val_labels))
+
+    train_loader = DataLoader(train_data, shuffle=True, batch_size=BATCH_SIZE)
+    val_loader = DataLoader(val_data, shuffle=True, batch_size=BATCH_SIZE)
+
+    """
     skf = StratifiedKFold(n_splits=2, shuffle=True, random_state=42)
     aggregated_acc = []
-
     tweets = data["text"].values
     labels = data["labels"].values
+    """
 
     """
     aggregated_acc = []
@@ -305,7 +282,52 @@ def cross_validation(df, model_type:str, glove_dim:int, glove_path:str):
         scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.1)
         counter=1
         acc=[]
+        clip = 5
+        epoch_tr_loss,epoch_vl_loss = [],[]
+        epoch_tr_acc,epoch_vl_acc = [],[]
         for epoch in range(2):
+            train_losses = []
+            train_acc = 0.0
+            bilstm.train()
+            for inputs, labels in train_loader:
+                inputs, labels = inputs.to(device), labels.to(device)
+                bilstm.zero_grad()
+                output = bilstm(inputs)
+                loss = loss_func(output.squeeze(), labels.float())
+                loss.backward()
+                train_losses.append(loss.item())
+                accuracy = binary_accuracy(output, labels)
+                train_acc += accuracy
+                torch.nn.utils.clip_grad_norm_(bilstm.parameters(), clip)
+                optimizer.step()
+            val_losses = []
+            val_acc = 0.0
+            bilstm.eval()
+            for inputs, labels in val_loader:
+                inputs, labels = inputs.to(device), labels.to(device)
+                output = bilstm(inputs)
+                val_loss = loss_func(output.squeeze(), labels.float())
+                val_losses.append(val_loss.item())
+                accuracy = binary_accuracy(output, labels)
+                val_acc += accuracy
+            epoch_train_loss = np.mean(train_losses)
+            epoch_val_loss = np.mean(val_losses)
+            epoch_train_acc = train_acc/len(train_loader.dataset)
+            epoch_val_acc = val_acc/len(val_loader.dataset)
+            epoch_tr_loss.append(epoch_train_loss)
+            epoch_vl_loss.append(epoch_val_loss)
+            epoch_tr_acc.append(epoch_train_acc)
+            epoch_vl_acc.append(epoch_val_acc)
+            scheduler.step()
+            print(f'Epoch {epoch+1}')
+            print(f'train_loss : {epoch_train_loss} val_loss : {epoch_val_loss}')
+            print(f'train_accuracy : {epoch_train_acc*100} val_accuracy : {epoch_val_acc*100}')
+            if epoch_val_loss <= valid_loss_min:
+                torch.save(bilstm.state_dict(), '../working/state_dict.pt')
+                print('Validation loss decreased ({:.6f} --> {:.6f}).  Saving model ...'.format(valid_loss_min,epoch_val_loss))
+                valid_loss_min = epoch_val_loss
+            print(25*'==')
+            """
             bilstm.train()
             for batch in train_iterator:
                 optimizer.zero_grad()
@@ -329,6 +351,8 @@ def cross_validation(df, model_type:str, glove_dim:int, glove_path:str):
                 epoch_acc += accuracy.item()
             acc.append(valid_acc)
             print(f'| Epoch: {epochs+1:02} | Val. Acc: {valid_acc*100:.2f}% | ---%Saving the model%---')
+            """
+        return valid_loss_min, 0
 
 
     #return epoch_loss / len(iterator)
@@ -373,7 +397,7 @@ if __name__ == "__main__":
         for model_type in ["bilstm"]:
             mean_accuracy = None
             std_accuracy = None
-            mean_accuracy, std_accuracy = cross_validation(data=train_df,
+            mean_accuracy, std_accuracy = cross_validation(df=train_df,
                                                            glove_dim=glove_dim,
                                                             model_type=model_type,
                                                             glove_path=args.glove_path)
