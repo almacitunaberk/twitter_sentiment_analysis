@@ -74,6 +74,9 @@ def cross_validation(data, save_path:str,
     val_tweets = val["text"].values
     val_labels = val["labels"].values
 
+    del train
+    del val
+
     accuracy = None
     model = None
 
@@ -92,10 +95,10 @@ def cross_validation(data, save_path:str,
             X_train = np.asarray(X_train.todense())
             X_val = np.asarray(X_val.todense())
     elif embedding_model == "glove":
-        glove = GloVe(name="twitter.27B", dim=embedding_args.get("dimension"))
+        glove = GloVe(name="twitter.27B", cache="/home/ubuntu/twitter_sentiment_analysis/.vector_cache", dim=embedding_args.get("dimension"))
         tokenizer = Tokenizer(reduce_len=True, segment_hashtags=True)
-        X_train = np.array([np.mean(glove.get_vecs_by_tokens(tokenizer.tokenize_tweet(tweet=tweet), lower_case_backup=True).numpy(), axis=0) for tweet in training_tweets], dtype="float64")
-        X_val = np.array([np.mean(glove.get_vecs_by_tokens(tokenizer.tokenize_tweet(tweet=tweet), lower_case_backup=True).numpy(), axis=0) for tweet in val_tweets], dtype="float64")
+        X_train = np.array([np.mean(glove.get_vecs_by_tokens(tokenizer.tokenize_tweet(tweet=tweet), lower_case_backup=True).numpy(), axis=0) for tweet in training_tweets if len(tweet) != 0], dtype="float64")
+        X_val = np.array([np.mean(glove.get_vecs_by_tokens(tokenizer.tokenize_tweet(tweet=tweet), lower_case_backup=True).numpy(), axis=0) for tweet in val_tweets if len(tweet) != 0], dtype="float64")
 
     if embedding_model in ["bow", "tf-idf"]:
         scaler = StandardScaler(with_mean=False)
@@ -117,18 +120,23 @@ def cross_validation(data, save_path:str,
                                     max_depth=model_args.get("max_depth"),
                                     max_features=model_args.get("max_features"))
     elif model_type == "gaussian":
-        if embedding_model == "bow":
-            X_train
         model = GaussianNB()
     elif model_type == "bernoulli":
         model = BernoulliNB(alpha=model_args.get("alpha"))
 
     model.fit(X_train, training_labels)
+    del X_train
+    del training_tweets
+    del training_labels
     if model_type == "ridge":
         y_preds = (model.predict(X_val) > 0.5).astype(np.int64)
     else:
         y_preds = model.predict(X_val)
+
     accuracy = accuracy_score(val_labels, y_preds)
+    del X_val
+    del val_tweets
+    del val_labels
 
     if accuracy == None:
         print("Accuracy gives None. Something went wrong!")
@@ -148,11 +156,15 @@ def cross_validation(data, save_path:str,
     model_save_name = f"{model_save_name}.pkl"
     with open(f"{save_path}/{model_save_name}", "wb") as f:
         pickle.dump(model, f, protocol=5)
+    del model
     write_to_log(embedding_model=embedding_model, embedding_args=embedding_args,
                             model_type=model_type, model_args=model_args, log_path=log_path,
                             log_filename=log_filename, data_type="preprocessed",
                             accuracy=accuracy)
     print(f"{model_type} with {embedding_model} is trained")
+
+def get_length(tweet):
+    return len(tweet)
 
 if __name__ == "__main__":
     logging.basicConfig(filename="non_deep_model_logs.txt",
@@ -172,7 +184,7 @@ if __name__ == "__main__":
         os.makedirs(f"{args.save_path}")
     preprocessed_data_type = args.input_path.split("/")[-1][:-4].split("_")[1:]
     train_df = pd.read_csv(args.input_path)
-    train_df = train_df.sample(10000)
+    #train_df = train_df.sample(10000)
     train_df = train_df.dropna()
     tweets = np.array(train_df["text"].values)
     labels = np.array(train_df["labels"].values)
@@ -186,7 +198,7 @@ if __name__ == "__main__":
     """
     model_to_args = {
         "logistic": {
-            "n_jobs": 1,
+            "n_jobs": multiprocessing.cpu_count(),
             "solver": "saga",
             "C": 1e5,
             "max_iter": 100,
@@ -203,7 +215,7 @@ if __name__ == "__main__":
             "n_jobs": 1,
         },
         "random_forest_others": {
-            "n_jobs": 1,
+            "n_jobs": multiprocessing.cpu_count(),
             "n_estimators": 100,
             "max_depth": 50,
             "max_features": 50,
@@ -221,7 +233,7 @@ if __name__ == "__main__":
             "max_features": 5000,
         },
         "glove": {
-            "dimension": 200,
+            "dimension": 100,
         }
     }
     """
@@ -235,8 +247,8 @@ if __name__ == "__main__":
                                 data_type=preprocessed_data_type)
     """
     init_args = []
-    for embedding_model in ["bow", "tf-idf", "glove"]:
-            for model_type in ["logistic", "ridge", "random_forest", "gaussian", "bernoulli"]:
+    for embedding_model in ["bow", "tf-idf"]:
+            for model_type in ["ridge", "bernoulli"]:
                 model_to_args_key = model_type
 
                 if model_type == "random_forest" and embedding_model == "glove":
@@ -254,8 +266,9 @@ if __name__ == "__main__":
                                   args.log_filename,
                                   ))
 
+    """
     with multiprocessing.Manager() as manager:
-            pool = multiprocessing.Pool(processes=multiprocessing.cpu_count())
+            pool = multiprocessing.Pool(processes=16)
             jobs = [pool.apply_async(func=cross_validation, args=init_args[i]) for i in range(len(init_args))]
             pool.close()
             results = []
@@ -264,7 +277,8 @@ if __name__ == "__main__":
                     result = job.get()
                     results.append(result)
                     pbar.update(1)
-                """
+    """
+    """
                 accuracy = cross_validation(data=train_df,
                                             embedding_model=embedding_model,
                                             model_type=model_type,
@@ -276,4 +290,27 @@ if __name__ == "__main__":
                             model_type=model_type, model_args=model_to_args.get(model_to_args_key), log_path=args.log_path,
                             log_filename=args.log_filename, data_type=preprocessed_data_type,
                             accuracy=accuracy)
-                """
+    """
+    train_df["length"] = train_df["text"].apply(get_length)
+    train_df = train_df[train_df["length"] != 0]
+
+
+    for embedding_model in ["glove"]:
+        for model_type in ["logistic", "random_forest"]:
+
+            model_to_args_key = model_type
+
+            if model_type == "random_forest" and embedding_model == "glove":
+                model_to_args_key = "random_forest_glove"
+            elif model_type == "random_forest" and embedding_model != "glove":
+                model_to_args_key = "random_forest_others"
+
+            cross_validation(train_df,
+                        args.save_path,
+                        embedding_model,
+                        model_type,
+                        embedding_to_args.get(embedding_model),
+                        model_to_args.get(model_to_args_key),
+                        args.log_path,
+                        args.log_filename)
+
