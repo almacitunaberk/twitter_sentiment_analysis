@@ -30,10 +30,11 @@ class CustomDataset(Dataset):
         inputs = self.tokenizer.encode_plus(
             tweet,
             None,
-            pad_to_max_length=True,
+            padding="max_length",
             add_special_tokens=True,
             return_attention_mask=True,
-            max_length=self.max_length
+            #max_length=self.max_length,
+            truncation=True
         )
 
         ids = inputs["input_ids"]
@@ -152,4 +153,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
     assert args.input_dir is not None
     df = pd.read_csv(args.input_dir)
+    df = df.sample(n=100000)
     train(df)
