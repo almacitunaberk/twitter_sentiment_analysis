@@ -1,0 +1,18 @@
+general:
+  rand_seed: 42
+  data_path: '/home/ubuntu/data/raw_processed.csv'
+  batch_size: 32
+  tweets_column: 'text'
+  labels_column: 'labels'
+  testing: True
+  reduced_samples: True
+  reduced_length: 10000
+  validation_size: 0.2
+
+model:
+  name: 'bert-base-uncased'
+  batch_size: 32
+  lr: 0.00001
+  num_epochs: 20
+  max_length: 100
+  dropout_prob: 0.2
