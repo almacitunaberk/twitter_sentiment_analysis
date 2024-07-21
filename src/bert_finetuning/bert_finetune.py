@@ -14,15 +14,10 @@ from types import SimpleNamespace
 from torch.utils.data import DataLoader
 import lightning as l
 from lightning.pytorch.loggers import WandbLogger
-import sys
-filename = os.path.dirname(__file__)[:-1]
-filename = "/".join(filename.split("/")[:-1])
-sys.path.append(os.path.join(filename, 'bert_finetuning'))
-from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch import Trainer, seed_everything
+from lightning.pytorch.callbacks import ModelCheckpoint, ModelSummary, BatchSizeFinder, EarlyStopping, DeviceStatsMonitor, LearningRateFinder, StochasticWeightAveraging
 from bert_dataset import CustomDataset, CustomDataModule
 from bert_model import BERTModel
-
-wandb.login()
 
 class Model(l.LightningModule):
     def __init__(self, config):
@@ -62,20 +57,8 @@ class Model(l.LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.config.model.lr)
-        return optimizer
-
-
-def set_seed(seed):
-    """
-    Sets random number generator seeds for PyTorch and NumPy to ensure reproducibility of results.
-    """
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    np.random.seed(seed)
-    random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
+        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer, gamma=0.001)
+        return [optimizer], [{"scheduler": scheduler, "interval": "epoch"}]
 
 
 def get_namespace(data:dict):
@@ -91,49 +74,98 @@ def get_namespace(data:dict):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_path", help="The path of the config file. This value cannot be null")
+    parser.add_argument("--run_id", help="Run ID is needed to identify the Wandb run")
+    parser.add_argument("--model_extension", help="If you added any extension to the base model, please identify it with an extension name", default="1")
     args = parser.parse_args()
-    if args.config_path is None:
-        print("Config_dir argument cannot be null")
+    if args.config_path is None or args.run_id is None:
+        print("Config_path or run_id arguments cannot be null")
         exit()
     config = None
     with open(f"{args.config_path}", "r") as f:
         config = yaml.safe_load(f)
     config = get_namespace(config)
-    set_seed(config.general.rand_seed)
+    seed_everything(config.general.rand_seed, workers=True)
     ## TODO: Comment this line when running on cluster
     config.general.data_path = "/Users/tunaberkalmaci/Downloads/twitter_sentiment_analysis/src/data/processed/raw_processed.csv"
-
+    if config.general.use_wandb:
+        wandb.login()
+    log_dir = f"./saved_models/{config.model.name}_{args.model_extension}"
     logger = WandbLogger(
         project="twitter_sent_analysis",
-        name="bert_finetune",
-        entity="almacitunaberk-eth")
+        name=args.run_id,
+        entity="almacitunaberk-eth",
+        save_dir=log_dir,
+        log_model="all"
+        )
 
     checkpoint_callb = ModelCheckpoint(
         monitor="val_loss",
-        filename= "bert_finetune_epoch{epoch:02d}-val_loss{val_loss:.2f}",
+        filename= "{epoch:02d}-{val_loss:.2f}",
         save_top_k=2,
+        mode="min",
+        dirpath=log_dir,
+        enable_version_counter=True
+    )
+
+    summary_callb = ModelSummary(
+        max_depth=1
+    )
+
+    batch_size_callb = BatchSizeFinder(
+        mode="binsearch",
+        init_val=256,
+        max_trials=3,
+    )
+
+    early_stopping_callb = EarlyStopping(
+        monitor="val_loss",
+        min_delta=0.01,
+        patience=5,
         mode="min"
     )
 
-    if config.general.testing:
+    lr_finder_callb = LearningRateFinder(
+        min_lr=0.0000001,
+        max_lr=0.1,
+        mode="exponential"
+    )
 
-        df = pd.read_csv(config.general.data_path)
+    swa_callb = StochasticWeightAveraging(
+        swa_lrs=0.0001
+    )
 
-        if config.general.reduced_samples:
-            df = df.sample(n=config.general.reduced_length)
+    device_stats_callb = DeviceStatsMonitor(cpu_stats=False)
 
-        callback_list = [checkpoint_callb]
+    callback_list = [checkpoint_callb, summary_callb, batch_size_callb, early_stopping_callb, device_stats_callb, lr_finder_callb]
 
-        accelerator = "gpu" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+    df = pd.read_csv(config.general.data_path)
 
-        trainer = l.Trainer(
-            accelerator="cpu",
-            log_every_n_steps=1,
-            logger=logger,
-            enable_checkpointing=True,
-            callbacks=callback_list
-        )
-        data = CustomDataModule(df=df, config=config)
-        model = Model(config)
-        trainer.fit(model, data)
+    accelerator = "gpu" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+    if accelerator in ["gpu", "cuda"]:
+        print("Using the GPU")
+    else:
+        print("GPU is not being used")
+
+    if config.general.local:
+        df = df.sample(n=config.general.reduced_length)
+
+    trainer = Trainer(
+        accelerator=accelerator,
+        log_every_n_steps=1,
+        logger=logger,
+        enable_checkpointing=True,
+        callbacks=callback_list,
+        precision= "32-true" if config.general.local else "64-true",
+        strategy="ddp" if torch.cuda.is_available() else "auto",
+        #check_val_every_n_epoch=10,
+        max_epochs = config.model.max_epochs,
+        fast_dev_run = 5 if config.general.local else False,
+        profiler="simple",
+        deterministic=True,
+    )
+    data = CustomDataModule(df=df, config=config)
+    model = Model(config)
+    trainer.fit(model, data)
+
+    if config.general.use_wandb:
         wandb.finish()

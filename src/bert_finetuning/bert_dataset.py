@@ -11,6 +11,7 @@ class CustomDataModule(l.LightningDataModule):
         self.df = df
         self.tokenizer = AutoTokenizer.from_pretrained(self.config.model.name)
         self.collator = DataCollatorWithPadding(tokenizer=self.tokenizer)
+        self.batch_size = config.model.batch_size
 
     def setup(self, stage:str):
         train_df, val_df = train_test_split(self.df, test_size=self.config.general.validation_size)
@@ -21,16 +22,18 @@ class CustomDataModule(l.LightningDataModule):
         return DataLoader(
             self.train_data,
             shuffle=True,
-            batch_size=self.config.model.batch_size,
-            collate_fn=self.collator
+            batch_size=self.batch_size,
+            collate_fn=self.collator,
+            num_workers=self.config.model.dataloader_workers
         )
 
     def val_dataloader(self):
         return DataLoader(
             self.val_data,
             shuffle=True,
-            batch_size=self.config.model.batch_size,
-            collate_fn=self.collator
+            batch_size=self.batch_size,
+            collate_fn=self.collator,
+            num_workers=self.config.model.dataloader_workers
         )
 
 
