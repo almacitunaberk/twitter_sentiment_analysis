@@ -16,22 +16,22 @@ import lightning as l
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch import Trainer, seed_everything
 from lightning.pytorch.callbacks import ModelCheckpoint, ModelSummary, BatchSizeFinder, EarlyStopping, DeviceStatsMonitor, LearningRateFinder, StochasticWeightAveraging
-from bert_dataset import CustomDataset, CustomDataModule
-from bert_model import BERTModel
+from finetune_dataset import FinetuneDataset, FinetuneDataModule
+from finetune_model import FinetuneModel
 
-class Model(l.LightningModule):
+class PLModel(l.LightningModule):
     def __init__(self, config):
         super().__init__()
         self.save_hyperparameters()
         self.config = config
-        self.model = BERTModel(config=config)
+        self.model = FinetuneModel(config=config)
         self.loss_fn = nn.BCELoss()
-        for param in self.model.bert_model.parameters():
-            param.required_grad = False
-        self.model.bert_model.eval()
 
     def num_params(self):
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
+
+    def forward(self, x):
+        return self.model(x["input_ids"], x["attention_mask"])
 
     def training_step(self, batch, batch_idx):
         targets = batch["targets"]
@@ -89,26 +89,30 @@ if __name__ == "__main__":
     if config.general.use_wandb:
         wandb.login()
     log_dir = f"./saved_models/{config.model.name}_{args.model_extension}"
-    logger = WandbLogger(
-        project="twitter_sent_analysis",
-        name=args.run_id,
-        entity="almacitunaberk-eth",
-        save_dir=log_dir,
-        log_model="all"
+    if config.general.use_wandb:
+        logger = WandbLogger(
+            project="twitter_sent_analysis",
+            name=args.run_id,
+            entity="almacitunaberk-eth",
+            save_dir=log_dir,
+            log_model="all"
         )
 
     checkpoint_callb = ModelCheckpoint(
         monitor="val_loss",
-        filename= "{epoch:02d}-{val_loss:.2f}",
+        filename= '{epoch:02d}-{val_loss:.2f}',
         save_top_k=2,
         mode="min",
         dirpath=log_dir,
         enable_version_counter=True
     )
 
-    summary_callb = ModelSummary(
-        max_depth=1
-    )
+    if config.general.use_model_summary:
+        summary_callb = ModelSummary(
+            max_depth=1
+        )
+
+
     if config.model.use_batchsize_finder:
         batch_size_callb = BatchSizeFinder(
             mode="binsearch",
@@ -116,12 +120,13 @@ if __name__ == "__main__":
             max_trials=3,
         )
 
-    early_stopping_callb = EarlyStopping(
-        monitor="val_loss",
-        min_delta=0.01,
-        patience=5,
-        mode="min"
-    )
+    if config.general.use_early_stopping:
+        early_stopping_callb = EarlyStopping(
+            monitor="val_loss",
+            min_delta=0.01,
+            patience=5,
+            mode="min"
+        )
 
     if config.model.use_lr_finder:
         lr_finder_callb = LearningRateFinder(
@@ -130,20 +135,33 @@ if __name__ == "__main__":
             mode="exponential"
         )
 
-    swa_callb = StochasticWeightAveraging(
-        swa_lrs=0.0001
-    )
+    if config.general.use_swa:
+        swa_callb = StochasticWeightAveraging(
+            swa_lrs=0.0001
+        )
 
     if config.model.use_device_stats:
         device_stats_callb = DeviceStatsMonitor(cpu_stats=False)
 
-    callback_list = [checkpoint_callb, summary_callb, early_stopping_callb]
+    callback_list = [checkpoint_callb]
+
     if config.model.use_batchsize_finder:
         callback_list.append(batch_size_callb)
+
     if config.model.use_lr_finder:
         callback_list.append(lr_finder_callb)
+
     if config.model.use_device_stats:
         callback_list.append(device_stats_callb)
+
+    if config.general.use_model_summary:
+        callback_list.append(summary_callb)
+
+    if config.general.use_early_stopping:
+        callback_list.append(early_stopping_callb)
+
+    if config.general.use_swa:
+        callback_list.append(swa_callb)
 
     df = pd.read_csv(config.general.data_path)
 
@@ -159,18 +177,18 @@ if __name__ == "__main__":
     trainer = Trainer(
         accelerator=accelerator,
         log_every_n_steps=1,
-        logger=logger,
-        enable_checkpointing=True,
+        logger=logger if config.general.use_wandb else None,
         callbacks=callback_list,
         strategy="ddp" if torch.cuda.is_available() else "auto",
         #check_val_every_n_epoch=10,
         max_epochs = config.model.max_epochs,
         fast_dev_run = 5 if config.general.local else False,
-        profiler="simple",
+        profiler=config.general.use_profiler,
         deterministic=True,
     )
-    data = CustomDataModule(df=df, config=config)
-    model = Model(config)
+
+    data = FinetuneDataModule(df=df, config=config)
+    model = PLModel(config)
     trainer.fit(model, data)
 
     if config.general.use_wandb:

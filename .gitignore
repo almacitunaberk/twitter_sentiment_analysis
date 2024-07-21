@@ -3,3 +3,5 @@
 /src/models/baseline_models/logs/*
 .DS_store
 .vector_cache
+.sent
+saved_models

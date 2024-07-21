@@ -4,7 +4,7 @@ import lightning as l
 from sklearn.model_selection import train_test_split
 from transformers import AutoTokenizer, DataCollatorWithPadding
 
-class CustomDataModule(l.LightningDataModule):
+class FinetuneDataModule(l.LightningDataModule):
     def __init__(self, df, config):
         super().__init__()
         self.config = config
@@ -15,8 +15,8 @@ class CustomDataModule(l.LightningDataModule):
 
     def setup(self, stage:str):
         train_df, val_df = train_test_split(self.df, test_size=self.config.general.validation_size)
-        self.train_data = CustomDataset(df=train_df, tokenizer=self.tokenizer, config=self.config)
-        self.val_data = CustomDataset(df=val_df, tokenizer=self.tokenizer, config=self.config)
+        self.train_data = FinetuneDataset(df=train_df, tokenizer=self.tokenizer, config=self.config, is_test=False)
+        self.val_data = FinetuneDataset(df=val_df, tokenizer=self.tokenizer, config=self.config, is_test=False)
 
     def train_dataloader(self):
         return DataLoader(
@@ -36,15 +36,15 @@ class CustomDataModule(l.LightningDataModule):
             num_workers=self.config.model.dataloader_workers
         )
 
-
-
-class CustomDataset(Dataset):
-    def __init__(self, df, tokenizer, config):
-        super(CustomDataset, self).__init__()
+class FinetuneDataset(Dataset):
+    def __init__(self, df, tokenizer, config, is_test):
+        super(FinetuneDataset, self).__init__()
         self.df = df
         self.tokenizer = tokenizer
         self.tweets = self.df["text"].values
-        self.labels = self.df["labels"].values
+        self.is_test = is_test
+        if not self.is_test:
+            self.labels = self.df["labels"].values
         self.config = config
 
     def __len__(self):
@@ -59,14 +59,17 @@ class CustomDataset(Dataset):
             padding="max_length",
             truncation=True
         )
-
         ids = inputs["input_ids"]
-        token_type_ids = inputs["token_type_ids"]
         mask = inputs["attention_mask"]
 
-        return {
-            "input_ids": torch.tensor(ids,dtype=torch.long),
-            "token_type_ids": torch.tensor(token_type_ids, dtype=torch.long),
-            "attention_mask": torch.tensor(mask, dtype=torch.long),
-            "targets": torch.tensor(self.labels[index], dtype=torch.long)
-        }
+        if not self.is_test:
+            return {
+                "input_ids": torch.tensor(ids,dtype=torch.long),
+                "attention_mask": torch.tensor(mask, dtype=torch.long),
+                "targets": torch.tensor(self.labels[index], dtype=torch.long)
+            }
+        else:
+            return {
+                "input_ids": torch.tensor(ids,dtype=torch.long),
+                "attention_mask": torch.tensor(mask, dtype=torch.long),
+            }
