@@ -4,7 +4,7 @@ general:
   batch_size: 256
   tweets_column: 'text'
   labels_column: 'labels'
-  local: True
+  local: False
   validation_size: 0.2
   reduced_length: 1000
   use_wandb: True
@@ -19,3 +19,6 @@ model:
   max_epochs: 5
   base_model_require_grad: False
   dataloader_workers: 7
+  use_batchsize_finder: False
+  use_lr_finder: False
+  use_device_stats: False

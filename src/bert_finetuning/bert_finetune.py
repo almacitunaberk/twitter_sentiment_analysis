@@ -86,7 +86,6 @@ if __name__ == "__main__":
     config = get_namespace(config)
     seed_everything(config.general.rand_seed, workers=True)
     ## TODO: Comment this line when running on cluster
-    config.general.data_path = "/Users/tunaberkalmaci/Downloads/twitter_sentiment_analysis/src/data/processed/raw_processed.csv"
     if config.general.use_wandb:
         wandb.login()
     log_dir = f"./saved_models/{config.model.name}_{args.model_extension}"
@@ -110,12 +109,12 @@ if __name__ == "__main__":
     summary_callb = ModelSummary(
         max_depth=1
     )
-
-    batch_size_callb = BatchSizeFinder(
-        mode="binsearch",
-        init_val=256,
-        max_trials=3,
-    )
+    if config.model.use_batchsize_finder:
+        batch_size_callb = BatchSizeFinder(
+            mode="binsearch",
+            init_val=256,
+            max_trials=3,
+        )
 
     early_stopping_callb = EarlyStopping(
         monitor="val_loss",
@@ -124,19 +123,27 @@ if __name__ == "__main__":
         mode="min"
     )
 
-    lr_finder_callb = LearningRateFinder(
-        min_lr=0.0000001,
-        max_lr=0.1,
-        mode="exponential"
-    )
+    if config.model.use_lr_finder:
+        lr_finder_callb = LearningRateFinder(
+            min_lr=0.0000001,
+            max_lr=0.1,
+            mode="exponential"
+        )
 
     swa_callb = StochasticWeightAveraging(
         swa_lrs=0.0001
     )
 
-    device_stats_callb = DeviceStatsMonitor(cpu_stats=False)
+    if config.model.use_device_stats:
+        device_stats_callb = DeviceStatsMonitor(cpu_stats=False)
 
-    callback_list = [checkpoint_callb, summary_callb, batch_size_callb, early_stopping_callb, device_stats_callb, lr_finder_callb]
+    callback_list = [checkpoint_callb, summary_callb, early_stopping_callb]
+    if config.model.use_batchsize_finder:
+        callback_list.append(batch_size_callb)
+    if config.model.use_lr_finder:
+        callback_list.append(lr_finder_callb)
+    if config.model.use_device_stats:
+        callback_list.append(device_stats_callb)
 
     df = pd.read_csv(config.general.data_path)
 
@@ -155,7 +162,6 @@ if __name__ == "__main__":
         logger=logger,
         enable_checkpointing=True,
         callbacks=callback_list,
-        precision= "32-true" if config.general.local else "64-true",
         strategy="ddp" if torch.cuda.is_available() else "auto",
         #check_val_every_n_epoch=10,
         max_epochs = config.model.max_epochs,
