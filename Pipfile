@@ -12,6 +12,9 @@ pandas = "*"
 wordsegment = "*"
 gensim = "*"
 scipy = "==1.10.1"
+torch = "*"
+torchvision = "*"
+torchtext = "*"
 
 [dev-packages]
 

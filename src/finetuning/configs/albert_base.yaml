@@ -1,0 +1,28 @@
+general:
+  rand_seed: 42
+  data_path: '/home/ubuntu/data/raw_processed.csv'
+  batch_size: 256
+  tweets_column: 'text'
+  labels_column: 'labels'
+  local: False
+  validation_size: 0.2
+  reduced_length: 100000
+  use_wandb: True
+  use_model_summary: False
+  use_early_stopping: False
+  use_swa: False
+  use_profiler: False
+
+model:
+  name: 'albert-base-v2'
+  batch_size: 256
+  lr: 0.01
+  num_epochs: 2
+  dropout_prob: 0.2
+  max_length: 100
+  max_epochs: 5
+  base_model_require_grad: False
+  dataloader_workers: 7
+  use_batchsize_finder: False
+  use_lr_finder: False
+  use_device_stats: False
