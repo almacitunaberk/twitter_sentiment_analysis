@@ -21,7 +21,7 @@ model:
   dropout_prob: 0.2
   max_length: 100
   max_epochs: 5
-  base_model_require_grad: False
+  base_model_require_grad: True
   dataloader_workers: 7
   use_batchsize_finder: False
   use_lr_finder: False

@@ -18,6 +18,7 @@ from lightning.pytorch import Trainer, seed_everything
 from lightning.pytorch.callbacks import ModelCheckpoint, ModelSummary, BatchSizeFinder, EarlyStopping, DeviceStatsMonitor, LearningRateFinder, StochasticWeightAveraging
 from finetune_dataset import FinetuneDataset, FinetuneDataModule
 from finetune_model import FinetuneModel
+import uuid
 
 class PLModel(l.LightningModule):
     def __init__(self, config):
@@ -88,7 +89,10 @@ if __name__ == "__main__":
     ## TODO: Comment this line when running on cluster
     if config.general.use_wandb:
         wandb.login()
-    log_dir = f"./saved_models/{config.model.name}_{args.model_extension}"
+    changed_name = config.model.name.replace("/", "_")
+    random_extension = str(uuid.uuid4())
+    random_extension = random_extension[:6]
+    log_dir = f"./saved_models/{changed_name}_{args.model_extension}_{random_extension}"
     if config.general.use_wandb:
         logger = WandbLogger(
             project="twitter_sent_analysis",
@@ -100,7 +104,7 @@ if __name__ == "__main__":
 
     checkpoint_callb = ModelCheckpoint(
         monitor="val_loss",
-        filename= '{epoch:02d}-{val_loss:.2f}',
+        filename= '{epoch:02d}-{step}-{val_loss:.2f}',
         save_top_k=2,
         mode="min",
         dirpath=log_dir,
@@ -179,12 +183,13 @@ if __name__ == "__main__":
         log_every_n_steps=1,
         logger=logger if config.general.use_wandb else None,
         callbacks=callback_list,
-        strategy="ddp" if torch.cuda.is_available() else "auto",
+        strategy="auto",
         #check_val_every_n_epoch=10,
         max_epochs = config.model.max_epochs,
         fast_dev_run = 5 if config.general.local else False,
         profiler=config.general.use_profiler,
         deterministic=True,
+        val_check_interval=0.5
     )
 
     data = FinetuneDataModule(df=df, config=config)

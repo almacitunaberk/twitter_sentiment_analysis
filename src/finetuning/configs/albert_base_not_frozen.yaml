@@ -14,9 +14,9 @@ general:
   use_profiler: False
 
 model:
-  name: 'cardiffnlp/twitter-roberta-base-sentiment-latest'
+  name: 'albert-base-v2'
   batch_size: 64
-  lr: 0.00002
+  lr: 0.01
   num_epochs: 2
   dropout_prob: 0.2
   max_length: 100
