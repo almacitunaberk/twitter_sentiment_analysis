@@ -1,0 +1,26 @@
+general:
+  train_path: '/home/ubuntu/data/raw_processed.csv'
+  batch_size: 32
+  dataloader_workers: 7
+  seed: 42
+  use_wandb: True
+  max_epochs: 100
+  run_id: ensemble_model
+
+model1:
+  backbone_model: 'cardiffnlp/twitter-roberta-base-sentiment-latest'
+  save_path: '/home/ubuntu/saved_models/cardiff-base/epoch=01-val_loss=0.22.ckpt'
+
+model2:
+  backbone_model: 'cardiffnlp/twitter-roberta-base-2022-154m'
+  save_path: '/home/ubuntu/saved_models/cardiff-large/epoch=00-step=9375-val_loss=0.25.ckpt'
+
+model3:
+  backbone_model: 'vinai/bertweet-large'
+  save_path: '/home/ubuntu/saved_models/vinai-large/epoch=00-step=62500-val_loss=0.23.ckpt'
+
+model4:
+  backbone_model: 'vinai/bertweet-base'
+  save_path: '/home/ubuntu/saved_models/vinai-base/epoch=00-step=31250-val_loss=0.22.ckpt'
+
+
