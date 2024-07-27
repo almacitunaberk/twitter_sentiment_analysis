@@ -15,6 +15,9 @@ scipy = "==1.10.1"
 torch = "*"
 torchvision = "*"
 torchtext = "*"
+platformdirs = "*"
+lightning = "*"
+pyyaml = "*"
 
 [dev-packages]
 
