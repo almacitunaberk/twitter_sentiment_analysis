@@ -161,50 +161,51 @@ def get_namespace(data):
 
 def get_tokens(config, train_df):
 
-    #train_df = train_df.head(100) # TODO: Comment here on AWS
+    train_df = train_df.head(1000) # TODO: Comment here on AWS
+    for t in range(0, len(train_df), 32):
+        truncated_df = train_df.iloc[t:t+32]
+        for i in range(4):
+            model_save_path = None
+            if i == 0:
+                model_save_path = config.model1.save_path
+                tokenizer = AutoTokenizer.from_pretrained(config.model1.backbone_model)
+            if i == 1:
+                model_save_path = config.model2.save_path
+                tokenizer = AutoTokenizer.from_pretrained(config.model2.backbone_model)
+            if i == 2:
+                model_save_path = config.model3.save_path
+                tokenizer = AutoTokenizer.from_pretrained(config.model3.backbone_model)
+            if i == 3:
+                model_save_path = config.model4.save_path
+                tokenizer = AutoTokenizer.from_pretrained(config.model4.backbone_model)
 
-    for i in range(4):
-        model_save_path = None
-        if i == 0:
-            model_save_path = config.model1.save_path
-            tokenizer = AutoTokenizer.from_pretrained(config.model1.backbone_model)
-        if i == 1:
-            model_save_path = config.model2.save_path
-            tokenizer = AutoTokenizer.from_pretrained(config.model2.backbone_model)
-        if i == 2:
-            model_save_path = config.model3.save_path
-            tokenizer = AutoTokenizer.from_pretrained(config.model3.backbone_model)
-        if i == 3:
-            model_save_path = config.model4.save_path
-            tokenizer = AutoTokenizer.from_pretrained(config.model4.backbone_model)
+            model = PLModel.load_from_checkpoint(model_save_path)
+            model.to(device)
+            model.eval()
 
-        model = PLModel.load_from_checkpoint(model_save_path)
-        model.to(device)
-        model.eval()
+            collator = DataCollatorWithPadding(tokenizer=tokenizer)
+            train_data = CustomDataset(truncated_df, tokenizer=tokenizer)
+            train_loader = DataLoader(train_data, batch_size=32, shuffle=False, collate_fn=collator)
 
-        collator = DataCollatorWithPadding(tokenizer=tokenizer)
-        train_data = CustomDataset(train_df, tokenizer=tokenizer)
-        train_loader = DataLoader(train_data, batch_size=32, shuffle=False, collate_fn=collator)
-
-        with torch.no_grad():
-            with tqdm(total=len(train_loader), leave=False) as pbar:
-                for j, batch in enumerate(train_loader):
-                    batch.to(device)
-                    outs, indices = model(batch)
-                    outs.to(device)
-                    for k, (out, index) in enumerate(zip(outs, indices)):
-                        if i == 0:
-                            torch.save(out, f"tensors/tensor_{index}.pt")
-                        else:
-                            tensor = torch.load(f"tensors/tensor_{index}.pt")
-                            concatenated = torch.cat((tensor, out))
-                            torch.save(concatenated, f"tensors/tensor_{index}.pt")
-                    pbar.update(1)
-                model.to("cpu")
-                del model
-                del collator
-                del train_data
-                del train_loader
+            with torch.no_grad():
+                with tqdm(total=len(train_loader), leave=False) as pbar:
+                    for j, batch in enumerate(train_loader):
+                        batch.to(device)
+                        outs, indices = model(batch)
+                        outs.to(device)
+                        for k, (out, index) in enumerate(zip(outs, indices)):
+                            if i == 0:
+                                torch.save(out, f"tensors/tensor_{index}.pt")
+                            else:
+                                tensor = torch.load(f"tensors/tensor_{index}.pt")
+                                concatenated = torch.cat((tensor, out))
+                                torch.save(concatenated, f"tensors/tensor_{index}.pt")
+                        pbar.update(1)
+                    model.to("cpu")
+                    del model
+                    del collator
+                    del train_data
+                    del train_loader
 
 def train(config, df):
     seed_everything(config.general.seed)
@@ -262,6 +263,7 @@ class TensorsDataset(Dataset):
         super().__init__()
         self.folder = folder
         self.df = df
+        self.tweets = self.df["text"].values
         self.labels = self.df["labels"].values
         self.ids = self.df["indices"].values
 
@@ -270,7 +272,7 @@ class TensorsDataset(Dataset):
 
     def __getitem__(self, index):
         return {
-            "tensors": torch.load(f"{self.folder}/tensor_{self.ids[index]}.pt"),
+            "tensors": torch.load(f"tensors/tensor_{self.ids[index]}.pt"),
             "targets": torch.tensor(self.labels[index], dtype=torch.long)
         }
 
@@ -380,12 +382,10 @@ if __name__ == "__main__":
     train_df = pd.read_csv(config.general.train_path)
     train_df["indices"] = np.array([i for i in range(len(train_df))])
     train_df = train_df.dropna()
-    train_df = train_df.sample(n=10000)
     train_df.to_csv("sample.csv", index=False)
     print("Started writing tensors")
     get_tokens(config, train_df) # Toggle this if you already have the tensors
     print("Wrote tensors")
-
-    train(config=config, df=train_df)
+    #train(config=config, df=train_df)
 
 
