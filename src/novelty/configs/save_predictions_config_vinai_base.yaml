@@ -1,10 +1,11 @@
 general:
-  df_path: '/home/ubuntu/data/raw_processed.csv'
+  df_path: '/home/ubuntu/data/raw_processed_test.csv'
   batch_size: 128
   dataloader_workers: 8
   seed: 42
   max_epochs: 100
-  cls_save_path: /home/ubuntu/twitter_sentiment_analysis/src/cls_tokens
+  cls_save_path: /home/ubuntu/twitter_sentiment_analysis/src/cls_tokens_test
+  test_data: True
 
 model:
   backbone_model: 'vinai/bertweet-base'

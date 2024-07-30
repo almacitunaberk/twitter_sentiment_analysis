@@ -17,8 +17,8 @@ from torch.utils.data import DataLoader, Dataset
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 def save_model_predictions(config, df):
-
-    labels = df["labels"].values
+    if not config.general.test_data:
+        labels = df["labels"].values
     indices = df["indices"].values.astype("int64")
     preds = [np.empty(0, dtype=float) for i in range(len(df))]
     print(len(preds))
@@ -29,7 +29,7 @@ def save_model_predictions(config, df):
     model.freeze()
     model.eval()
     collator = DataCollatorWithPadding(tokenizer=tokenizer)
-    train_data = PredictionsDataset(df=df, tokenizer=tokenizer)
+    train_data = PredictionsDataset(df=df, tokenizer=tokenizer, config=config)
     train_loader = DataLoader(train_data, batch_size=config.general.batch_size, shuffle=False, collate_fn=collator)
 
     with torch.no_grad():

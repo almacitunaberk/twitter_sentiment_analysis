@@ -11,3 +11,6 @@ src/novelty/__pycache__/
 src/baseline_deep_models/__pycache__/
 .torch-text-venv/
 final_predictions.csv
+src/cls_tokens/
+src/cls_tokens_test/
+src/preprocess/__pycache__

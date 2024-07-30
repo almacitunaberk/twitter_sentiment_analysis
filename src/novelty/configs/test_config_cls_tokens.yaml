@@ -1,0 +1,7 @@
+general:
+  tokens1_path: /home/ubuntu/twitter_sentiment_analysis/src/cls_tokens_test/vinai-base.npy
+  tokens2_path: /home/ubuntu/twitter_sentiment_analysis/src/cls_tokens_test/cardiff-base.npy
+  result_save_path: /home/ubuntu/submission/submission_test_ensemble_summed_tokens.csv
+
+model:
+  save_path: /home/ubuntu/twitter_sentiment_analysis/saved_models/cls_tokens_ensemble_c70364/epoch=06-step=175000-val_loss=0.54.ckpt
