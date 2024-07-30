@@ -246,24 +246,7 @@ if __name__ == "__main__":
     train_df = pd.read_csv(args.input_path)
     #train_df = train_df.sample(n=10000) # TODO: Comment this line when not testing
     train_df = train_df.dropna()
-    """
-    pos_tweets = np.array(train_df[train_df["labels"] == 1]["text"].values)[:1000]
-    pos_labels = labels[:1000]
-    neg_tweets = np.array(train_df[train_df["labels"] == 0]["text"].values)[:1000]
-    neg_labels = [0 for i in range(1000)]
-    tweets = np.concatenate([pos_tweets, neg_tweets])
-    labels = np.concatenate([pos_labels, neg_labels])
-    model_to_args = {
-    }
-    cross_validation(tweets=tweets, labels=labels,
-                                embedding_model="glove",
-                                model_type="ridge",
-                                embedding_args=embedding_to_args.get("glove"),
-                                model_args=model_to_args.get("ridge"),
-                                log_path=args.log_path,
-                                log_filename=args.log_filename,
-                                data_type=preprocessed_data_type)
-    """
+
     mean_acc, std_acc = cross_validation(data=train_df, glove_dim=100, model_type="bilstm", save_path=args.save_path)
     write_to_log(glove_dim=100, model_type="bilstm",
                          log_path=args.log_path, log_filename=args.log_filename,

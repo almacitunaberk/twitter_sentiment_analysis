@@ -1,0 +1,19 @@
+general:
+  input_path: '/home/ubuntu/data/processed.csv'
+  batch_size: 32
+  seed: 42
+  use_wandb: True
+  log_path: '/home/ubuntu/twitter_sentiment_analysis/src/baseline_deep_models/logs/bilstm'
+  log_filename: 'logs.txt'
+  glove_path:
+  save_path: '/home/ubuntu/twitter_sentiment_analysis/saved_models/bilstm'
+  dataloader_workers: 8
+  max_epochs: 3
+  run_id: 'bilstm_full_data'
+  debug: False
+  validation_size: 0.2
+
+model:
+  glove_dim: 100
+  drop_prob: 0.2
+  lr: 0.01

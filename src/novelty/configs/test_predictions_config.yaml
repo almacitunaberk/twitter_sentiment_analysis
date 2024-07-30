@@ -1,12 +1,12 @@
 general:
-  train_path: '/home/ubuntu/data/raw_processed.csv'
+  test_path: '/home/ubuntu/data/raw_processed_test.csv'
   batch_size: 32
   dataloader_workers: 7
   seed: 42
   use_wandb: True
   max_epochs: 100
   run_id: ensemble_model
-  tensors_folder: /home/ubuntu/tensors
+  df_save_path: /home/ubuntu/preds/preds_raw_processed_test.csv
 
 model1:
   backbone_model: 'cardiffnlp/twitter-roberta-base-sentiment-latest'

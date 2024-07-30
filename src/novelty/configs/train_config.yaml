@@ -1,0 +1,10 @@
+general:
+  train_path: /home/ubuntu/preds/preds.csv
+  run_id: ensemble_full_data_avg_threshold_high_lr
+  use_wandb: True
+  seed: 42
+  max_epochs: 1000
+  batch_size: 32
+
+model:
+  lr: 0.1

@@ -1,5 +1,8 @@
 pandas
-numpy
+torch
+transformers
+lightning
+pyyaml
 nltk
 scikit-learn
 torch

@@ -22,6 +22,8 @@ from torch.utils.data import TensorDataset, DataLoader
 import time
 from tqdm import tqdm
 from sklearn.model_selection import train_test_split
+from types import SimpleNamespace
+import yaml
 
 if torch.cuda.is_available():
     print("GPU is available")
@@ -29,6 +31,15 @@ else:
     print("GPU is NOT available")
 
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+def get_namespace(data):
+    if type(data) is dict:
+        new_ns = SimpleNamespace()
+        for key, value in data.items():
+            setattr(new_ns, key, get_namespace(value))
+        return new_ns
+    else:
+        return data
 
 class BiLSTM(nn.Module):
     def __init__(self, embed_dim, drop_prob):
@@ -337,44 +348,22 @@ def cross_validation(data, model_type:str, glove_dim:int, glove_path:str, save_p
             return mean_accuracy, std_accuracy
     """
 if __name__ == "__main__":
-    log_file = open("/home/ubuntu/bilstm_unbatched.txt", "w")
-    sys.stdout = log_file
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--input_path", help="Input path of the preprocessed csv file")
-    parser.add_argument("--log_path", help="Path of the log folder")
-    parser.add_argument("--log_filename", help="Name of the log file", default="logs")
-    parser.add_argument("--glove_path", help="Path of the Glove embeddings", default="logs")
-    parser.add_argument("--save_path")
-    args = parser.parse_args()
-    if args.input_path is None or args.log_path is None or args.log_filename is None or args.glove_path is None or args.save_path is None:
-        print("Input path flag, log path,save_path, glove_path or log filename flag cannot be none")
-        exit()
-    if not os.path.exists(f"{args.log_path}"):
-        os.makedirs(f"{args.log_path}")
-    preprocessed_data_type = "unbatched bilstm with glove 100"
-    train_df = pd.read_csv(args.input_path)
-    #train_df = train_df.sample(n=500000) # TODO: Comment this line when not testing
-    train_df = train_df.dropna()
-    """
-    pos_tweets = np.array(train_df[train_df["labels"] == 1]["text"].values)[:1000]
-    pos_labels = labels[:1000]
-    neg_tweets = np.array(train_df[train_df["labels"] == 0]["text"].values)[:1000]
-    neg_labels = [0 for i in range(1000)]
-    tweets = np.concatenate([pos_tweets, neg_tweets])
-    labels = np.concatenate([pos_labels, neg_labels])
-    model_to_args = {
-    }
-    cross_validation(tweets=tweets, labels=labels,
-                                embedding_model="glove",
-                                model_type="ridge",
-                                embedding_args=embedding_to_args.get("glove"),
-                                model_args=model_to_args.get("ridge"),
-                                log_path=args.log_path,
-                                log_filename=args.log_filename,
-                                data_type=preprocessed_data_type)
-    """
 
-    for glove_dim in [100]:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config_path")
+
+    args = parser.parse_args()
+
+    assert args.config_path is not None
+
+    config = None:
+        with open(f"{args.config_path}", "r") as f:
+            config = yaml.safe_load(f)
+
+    train_df = pd.read_csv(args.input_path)
+    train_df = train_df.dropna()
+
+    for glove_dim in [100, 200]:
         for model_type in ["bilstm"]:
             mean_accuracy = None
             std_accuracy = None

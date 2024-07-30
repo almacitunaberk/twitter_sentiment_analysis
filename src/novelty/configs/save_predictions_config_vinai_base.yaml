@@ -1,0 +1,12 @@
+general:
+  df_path: '/home/ubuntu/data/raw_processed.csv'
+  batch_size: 128
+  dataloader_workers: 8
+  seed: 42
+  max_epochs: 100
+  cls_save_path: /home/ubuntu/twitter_sentiment_analysis/src/cls_tokens
+
+model:
+  backbone_model: 'vinai/bertweet-base'
+  save_path: '/home/ubuntu/saved_models/vinai-base/epoch=00-step=31250-val_loss=0.22.ckpt'
+  cls_filename: vinai-base

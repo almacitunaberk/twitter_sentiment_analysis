@@ -1,0 +1,6 @@
+general:
+  test_path: /home/ubuntu/preds/preds_raw_processed_test.csv
+  result_save_path: /home/ubuntu/submission/submission_test_ensemble_avg_and_treshold_param.csv
+
+model:
+  save_path: /home/ubuntu/twitter_sentiment_analysis/saved_models/ensemble_full_data_avg_threshold_high_lr_7abba9/epoch=00-step=31250-val_loss=0.53.ckpt

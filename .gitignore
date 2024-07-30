@@ -6,3 +6,8 @@
 .sent
 saved_models
 src/vector_cache/
+trial_np_save.npy
+src/novelty/__pycache__/
+src/baseline_deep_models/__pycache__/
+.torch-text-venv/
+final_predictions.csv
