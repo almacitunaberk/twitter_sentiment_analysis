@@ -1,0 +1,13 @@
+pandas
+transformers
+torch==2.2.2
+torchtext==0.17.2
+torchaudio
+nltk
+spacy
+emoji
+wordsegment
+scikit-learn
+lightning
+pyyaml
+wandb

@@ -1,0 +1,13 @@
+general:
+  seed: 42
+  tokens_folder: ../cls_tokens_train
+  df_path: '../data/csv/raw_train.csv'
+  use_wandb: False
+  run_id: ensemble
+  max_epochs: 5
+  batch_size: 32
+
+model:
+  save_path: ../saved_models/
+  save_name: ensemble
+  lr: 0.00002

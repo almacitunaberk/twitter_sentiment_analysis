@@ -1,0 +1,13 @@
+general:
+  seed: 42
+  tokens_folder: ../cls_tokens_test
+  df_path: '../data/csv/raw_test.csv'
+  use_wandb: False
+  run_id: ensemble
+  max_epochs: 5
+  batch_size: 32
+  save_path: ../data/test_outs/
+  save_filename: ensemble_055.csv
+
+model:
+  model_checkpoint: ../saved_models/ensemble_threshold_0.5499999999999999.ckpt

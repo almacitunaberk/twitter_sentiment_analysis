@@ -1,0 +1,13 @@
+general:
+  df_path: '../data/csv/raw_train.csv'
+  batch_size: 128
+  dataloader_workers: 8
+  seed: 42
+  max_epochs: 100
+  cls_save_path: ../cls_tokens_train
+  test_data: False
+
+model:
+  backbone_model: 'cardiffnlp/twitter-roberta-base-sentiment-latest'
+  save_path: '../saved_models/cardiff-base.ckpt'
+  cls_filename: 'cardiff-base'

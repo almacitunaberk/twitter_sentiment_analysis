@@ -1,0 +1,28 @@
+general:
+  input_path: '../data/csv/processed_train.csv'
+  batch_size: 32
+  seed: 42
+  use_wandb: False
+  wandb_project: twitter_sentiment_analysis
+  wandb_entity: almacitunaberk-eth
+  log_path: './logs/bilstm'
+  log_filename: 'logs.txt'
+  glove_path: 
+  save_path: '../saved_models/bilstm'
+  dataloader_workers: 8
+  max_epochs: 3
+  run_id: 'bilstm'
+  debug: False
+  validation_size: 0.2
+
+model:
+  glove_dim: 100
+  drop_prob: 0.2
+  lr: 0.01
+  save_name: 'bilstm'
+
+testing:
+  test_input_path: '../data/csv/processed_test.csv'
+  model_checkpoint: '../saved_models/bilstm.ckpt'
+  test_save_path: "../data/test_outs/"
+  test_filename: "bilstm"

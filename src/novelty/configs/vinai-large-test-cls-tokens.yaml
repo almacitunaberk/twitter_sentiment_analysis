@@ -1,0 +1,13 @@
+general:
+  df_path: '..data/csv/raw_test.csv'
+  batch_size: 128
+  dataloader_workers: 8
+  seed: 42
+  max_epochs: 100
+  cls_save_path: ../cls_tokens_test
+  test_data: False
+
+model:
+  backbone_model: 'vinai/bertweet-large'
+  save_path: '../saved_models/vinai-large.ckpt'
+  cls_filename: vinai-large
